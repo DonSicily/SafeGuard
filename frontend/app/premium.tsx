@@ -38,15 +38,11 @@ export default function Premium() {
           }
         ]
       );
-            } catch (error) {
-              Alert.alert('Error', 'Failed to initialize payment');
-            } finally {
-              setLoading(false);
-            }
-          }
-        }
-      ]
-    );
+    } catch (error) {
+      Alert.alert('Error', 'Failed to upgrade to premium');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
