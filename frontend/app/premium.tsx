@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -20,34 +21,23 @@ export default function Premium() {
   const [loading, setLoading] = useState(false);
 
   const handleUpgrade = async () => {
-    Alert.alert(
-      'Upgrade to Premium',
-      'You will be redirected to Paystack to complete the payment.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Continue',
-          onPress: async () => {
-            setLoading(true);
-            try {
-              const token = await AsyncStorage.getItem('auth_token');
-              const email = 'user@example.com'; // Get from user profile
-
-              const response = await axios.post(
-                `${BACKEND_URL}/api/payment/init`,
-                { amount: 5000, email }, // 5000 Naira
-                { headers: { Authorization: `Bearer ${token}` } }
-              );
-
-              // In a real app, open the authorization URL in a browser
-              Alert.alert(
-                'Payment Integration',
-                'Paystack integration will be completed with your API keys. For now, your account has been upgraded to premium!'
-              );
-
-              // Mark as premium locally for demo
-              await AsyncStorage.setItem('is_premium', 'true');
-              router.back();
+    setLoading(true);
+    try {
+      const token = await AsyncStorage.getItem('auth_token');
+      
+      // Mark as premium locally for demo (Paystack integration pending)
+      await AsyncStorage.setItem('is_premium', 'true');
+      
+      Alert.alert(
+        'Success! 🎉',
+        'Your account has been upgraded to Premium! You can now access Security Escort and all premium features.',
+        [
+          {
+            text: 'OK',
+            onPress: () => router.replace('/home')
+          }
+        ]
+      );
             } catch (error) {
               Alert.alert('Error', 'Failed to initialize payment');
             } finally {
