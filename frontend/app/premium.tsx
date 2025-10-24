@@ -168,9 +168,12 @@ const styles = StyleSheet.create({
   placeholder: {
     width: 32,
   },
-  content: {
+  scrollView: {
     flex: 1,
+  },
+  content: {
     padding: 24,
+    paddingBottom: 40,
   },
   premiumIcon: {
     alignItems: 'center',
