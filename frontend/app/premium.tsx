@@ -59,7 +59,7 @@ export default function Premium() {
         <View style={styles.placeholder} />
       </View>
 
-      <View style={styles.content}>
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
         <View style={styles.premiumIcon}>
           <Ionicons name="star" size={80} color="#FFD700" />
         </View>
