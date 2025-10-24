@@ -140,7 +140,7 @@ export default function Premium() {
         <Text style={styles.disclaimer}>
           Cancel anytime. No hidden fees.
         </Text>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
