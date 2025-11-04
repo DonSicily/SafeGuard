@@ -52,19 +52,28 @@ export default function Report() {
     try {
       setIsRecording(true);
       const video = await cameraRef.recordAsync({ maxDuration: 300 });
-      setRecordingUri(video.uri);
+      if (video && video.uri) {
+        setRecordingUri(video.uri);
+        Alert.alert('Success', 'Video recorded successfully');
+      }
       setIsRecording(false);
-      Alert.alert('Success', 'Video recorded successfully');
     } catch (error: any) {
       console.error('Recording error:', error);
-      Alert.alert('Error', `Failed to record: ${error.message}`);
       setIsRecording(false);
+      // Don't show alert if recording was manually stopped (user initiated)
+      if (error.message && !error.message.includes('recording')) {
+        Alert.alert('Error', `Failed to record: ${error.message}`);
+      }
     }
   };
 
-  const stopRecording = () => {
+  const stopRecording = async () => {
     if (cameraRef && isRecording) {
-      cameraRef.stopRecording();
+      try {
+        await cameraRef.stopRecording();
+      } catch (error: any) {
+        console.error('Stop recording error:', error);
+      }
     }
   };
 
