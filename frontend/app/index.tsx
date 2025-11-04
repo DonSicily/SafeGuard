@@ -76,7 +76,11 @@ export default function Index() {
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
-        <ActivityIndicator size="large" color="#EF4444" />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#EF4444" />
+          <Text style={styles.loadingText}>Loading SafeGuard...</Text>
+          {error && <Text style={styles.errorText}>{error}</Text>}
+        </View>
       </SafeAreaView>
     );
   }
