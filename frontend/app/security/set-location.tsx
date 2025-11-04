@@ -102,19 +102,45 @@ export default function SetLocation() {
         <View style={styles.placeholder} />
       </View>
 
-      <MapView
-        style={styles.map}
-        region={region}
-        onPress={(e) => setMarkerCoords(e.nativeEvent.coordinate)}
-      >
-        <Marker coordinate={markerCoords} title="Team Location" />
-        <Circle
-          center={markerCoords}
-          radius={radiusKm * 1000}
-          strokeColor="rgba(59, 130, 246, 0.5)"
-          fillColor="rgba(59, 130, 246, 0.1)"
-        />
-      </MapView>
+      {Platform.OS !== 'web' && MapView ? (
+        <MapView
+          style={styles.map}
+          region={region}
+          onPress={(e) => setMarkerCoords(e.nativeEvent.coordinate)}
+        >
+          <Marker coordinate={markerCoords} title="Team Location" />
+          <Circle
+            center={markerCoords}
+            radius={radiusKm * 1000}
+            strokeColor="rgba(59, 130, 246, 0.5)"
+            fillColor="rgba(59, 130, 246, 0.1)"
+          />
+        </MapView>
+      ) : (
+        <View style={styles.webMapPlaceholder}>
+          <Ionicons name="map" size={80} color="#64748B" />
+          <Text style={styles.webMapText}>Interactive map available on mobile devices</Text>
+          <View style={styles.coordinatesBox}>
+            <Text style={styles.coordinatesLabel}>Current Location:</Text>
+            <TextInput
+              style={styles.coordinateInput}
+              placeholder="Latitude"
+              placeholderTextColor="#64748B"
+              value={String(markerCoords.latitude)}
+              onChangeText={(val) => setMarkerCoords({...markerCoords, latitude: parseFloat(val) || 0})}
+              keyboardType="numeric"
+            />
+            <TextInput
+              style={styles.coordinateInput}
+              placeholder="Longitude"
+              placeholderTextColor="#64748B"
+              value={String(markerCoords.longitude)}
+              onChangeText={(val) => setMarkerCoords({...markerCoords, longitude: parseFloat(val) || 0})}
+              keyboardType="numeric"
+            />
+          </View>
+        </View>
+      )}
 
       <View style={styles.controls}>
         <View style={styles.radiusControl}>
