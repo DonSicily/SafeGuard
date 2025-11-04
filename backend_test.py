@@ -23,6 +23,8 @@ class SafeGuardAPITester:
         self.civil_user_id = None
         self.security_user_id = None
         self.test_results = []
+        self.civil_data = None
+        self.security_data = None
         
     def log_test(self, test_name, success, details=""):
         """Log test results"""
