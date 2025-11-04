@@ -379,7 +379,7 @@ class SafeGuardAPITester:
             self.log_test("Nearby Panics Query", False, response)
         
         # Test User Search by Email (use the civil user email from registration)
-        search_data = {"search_term": civil_data["email"]}
+        search_data = {"search_term": self.civil_data["email"]}
         success, response = self.make_request('POST', '/security/search-user', search_data, token=self.security_token)
         if success and response.get('user_id'):
             user_id = response.get('user_id')
@@ -395,7 +395,7 @@ class SafeGuardAPITester:
             self.log_test("User Search by Email", False, response)
         
         # Test User Search by Phone
-        search_data = {"search_term": civil_data["phone"]}
+        search_data = {"search_term": self.civil_data["phone"]}
         success, response = self.make_request('POST', '/security/search-user', search_data, token=self.security_token)
         if success and response.get('user_id'):
             self.log_test("User Search by Phone", True, f"Found user: {response.get('phone')}")
