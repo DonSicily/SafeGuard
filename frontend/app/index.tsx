@@ -124,6 +124,9 @@ export default function Index() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0F172A' },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
+  loadingText: { fontSize: 16, color: '#94A3B8', marginTop: 16 },
+  errorText: { fontSize: 14, color: '#EF4444', marginTop: 12, textAlign: 'center' },
   header: { alignItems: 'center', paddingVertical: 40 },
   appName: { fontSize: 32, fontWeight: 'bold', color: '#fff', marginTop: 16 },
   tagline: { fontSize: 16, color: '#94A3B8', marginTop: 8 },
