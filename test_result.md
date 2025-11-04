@@ -294,7 +294,7 @@ backend:
     file: "backend/server.py"
     stuck_count: 1
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
         - working: true
           agent: "testing"
@@ -305,6 +305,9 @@ backend:
         - working: true
           agent: "main"
           comment: "✅ FIXED: User role was None in database. Updated user role to 'civil' and fixed 3 other users with missing roles. Audio upload should work now."
+        - working: true
+          agent: "testing"
+          comment: "✅ VERIFIED FIX: Tested audio report creation for user dadonvelli@gmail.com. User role is correctly set to 'civil' in database. Audio report creation successful (Report ID: 690a824727bce1b6b5e41cab). Role validation fix is working correctly - no more 'only civil users are allowed to upload voice' error."
 
   - task: "User Reports Retrieval API"
     implemented: true
