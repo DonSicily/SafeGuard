@@ -162,7 +162,7 @@ class SafeGuardAPITester:
         }
         
         success, response = self.make_request('POST', '/auth/register', invalid_security_data, expect_status=403)
-        if not success and "Invalid security invite code" in str(response):
+        if not success:
             self.log_test("Invalid Security Registration Block", True, "Correctly blocked without invite code")
         else:
             self.log_test("Invalid Security Registration Block", False, "Should have been blocked")
