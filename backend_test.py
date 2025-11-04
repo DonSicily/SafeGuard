@@ -1,22 +1,27 @@
 #!/usr/bin/env python3
 """
-SafeGuard Security Mobile App - Backend API Testing
-Tests all backend endpoints for authentication, panic button, escort, reports, and payments
+Comprehensive Backend API Test Suite for SafeGuard Security App
+Tests the two-tier system (Civil vs Security users) with full API coverage
 """
 
 import requests
 import json
 import time
 from datetime import datetime
-from typing import Dict, Any, Optional
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv('/app/frontend/.env')
+BACKEND_URL = os.getenv('EXPO_PUBLIC_BACKEND_URL', 'https://guardcam.preview.emergentagent.com')
+API_BASE = f"{BACKEND_URL}/api"
 
 class SafeGuardAPITester:
-    def __init__(self, base_url: str):
-        self.base_url = base_url.rstrip('/')
-        self.api_url = f"{self.base_url}/api"
-        self.session = requests.Session()
-        self.auth_token = None
-        self.user_id = None
+    def __init__(self):
+        self.civil_token = None
+        self.security_token = None
+        self.civil_user_id = None
+        self.security_user_id = None
         self.test_results = []
         
     def log_test(self, test_name: str, success: bool, details: str = "", response_data: Any = None):
