@@ -132,7 +132,7 @@ class SafeGuardAPITester:
             
         # Test security user login
         login_data = {
-            "email": "security.team@safeguard.com",
+            "email": security_data["email"],
             "password": "SecurePass123!"
         }
         
