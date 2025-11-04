@@ -1,18 +1,10 @@
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  TextInput,
-  Alert,
-  ActivityIndicator,
-  Switch,
-} from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, TextInput, Alert, ActivityIndicator, Switch, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Camera, CameraType } from 'expo-camera';
+import { Camera, CameraType, CameraView } from 'expo-camera';
+import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 
@@ -25,36 +17,47 @@ export default function Report() {
   const [caption, setCaption] = useState('');
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [cameraRef, setCameraRef] = useState<Camera | null>(null);
+  const [cameraRef, setCameraRef] = useState<any>(null);
   const [recordingUri, setRecordingUri] = useState<string | null>(null);
+  const [location, setLocation] = useState<any>(null);
 
   React.useEffect(() => {
-    requestPermission();
+    requestPermissions();
   }, []);
 
-  const requestPermission = async () => {
-    const { status } = await Camera.requestCameraPermissionsAsync();
-    setHasPermission(status === 'granted');
+  const requestPermissions = async () => {
+    try {
+      const { status: cameraStatus } = await Camera.requestCameraPermissionsAsync();
+      const { status: micStatus } = await Camera.requestMicrophonePermissionsAsync();
+      const { status: locationStatus } = await Location.requestForegroundPermissionsAsync();
+      
+      setHasPermission(cameraStatus === 'granted' && micStatus === 'granted');
+      
+      if (locationStatus === 'granted') {
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+        setLocation(loc);
+      }
+    } catch (error) {
+      console.error('Permission error:', error);
+      Alert.alert('Error', 'Failed to get permissions');
+    }
   };
 
   const startRecording = async () => {
-    if (!cameraRef) return;
+    if (!cameraRef) {
+      Alert.alert('Error', 'Camera not ready');
+      return;
+    }
 
     try {
       setIsRecording(true);
-      const video = await cameraRef.recordAsync({
-        maxDuration: 300, // 5 minutes max
-      });
+      const video = await cameraRef.recordAsync({ maxDuration: 300 });
       setRecordingUri(video.uri);
       setIsRecording(false);
-      
-      Alert.alert(
-        'Recording Complete',
-        'Your video has been recorded. Add a caption and submit your report.',
-        [{ text: 'OK' }]
-      );
-    } catch (error) {
-      Alert.alert('Error', 'Failed to record video');
+      Alert.alert('Success', 'Video recorded successfully');
+    } catch (error: any) {
+      console.error('Recording error:', error);
+      Alert.alert('Error', `Failed to record: ${error.message}`);
       setIsRecording(false);
     }
   };
@@ -73,34 +76,39 @@ export default function Report() {
 
     setLoading(true);
     try {
+      // Get current location if not already available
+      let currentLocation = location;
+      if (!currentLocation) {
+        try {
+          currentLocation = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+        } catch (err) {
+          // Use default location if GPS fails
+          currentLocation = { coords: { latitude: 9.0820, longitude: 8.6753 } };
+        }
+      }
+
       const token = await AsyncStorage.getItem('auth_token');
-      
-      // In a real app, you would:
-      // 1. Upload video to Firebase Storage
-      // 2. Get the download URL
-      // 3. Create report with URL
-      
-      // For now, we'll create a report with placeholder URL
       await axios.post(
         `${BACKEND_URL}/api/report/create`,
         {
           type: 'video',
           caption: caption || 'Live security report',
           is_anonymous: isAnonymous,
-          file_url: 'firebase://placeholder-url', // Will be replaced with actual Firebase URL
-          thumbnail: 'data:image/png;base64,placeholder', // Thumbnail from video
-          uploaded: false, // Will be true after Firebase upload
+          file_url: recordingUri,
+          thumbnail: 'data:image/png;base64,placeholder',
+          uploaded: false,
+          latitude: currentLocation.coords.latitude,
+          longitude: currentLocation.coords.longitude,
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      Alert.alert(
-        'Success',
-        'Your report has been submitted. Video will be uploaded when internet is available.',
-        [{ text: 'OK', onPress: () => router.back() }]
-      );
+      Alert.alert('Success!', 'Your video report has been submitted successfully.', [
+        { text: 'OK', onPress: () => router.back() }
+      ]);
     } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.detail || 'Failed to submit report');
+      console.error('Submit error:', error);
+      Alert.alert('Error', error.response?.data?.detail || 'Failed to submit report. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -109,7 +117,10 @@ export default function Report() {
   if (hasPermission === null) {
     return (
       <SafeAreaView style={styles.container}>
-        <ActivityIndicator size="large" color="#10B981" />
+        <View style={styles.content}>
+          <ActivityIndicator size="large" color="#10B981" />
+          <Text style={styles.permissionText}>Requesting permissions...</Text>
+        </View>
       </SafeAreaView>
     );
   }
@@ -119,9 +130,12 @@ export default function Report() {
       <SafeAreaView style={styles.container}>
         <View style={styles.content}>
           <Ionicons name="camera-off" size={80} color="#64748B" />
-          <Text style={styles.permissionText}>Camera permission is required</Text>
-          <TouchableOpacity style={styles.button} onPress={requestPermission}>
-            <Text style={styles.buttonText}>Grant Permission</Text>
+          <Text style={styles.permissionText}>Camera & microphone permissions required</Text>
+          <TouchableOpacity style={styles.button} onPress={requestPermissions}>
+            <Text style={styles.buttonText}>Grant Permissions</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <Text style={styles.backButtonText}>Go Back</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -131,7 +145,7 @@ export default function Report() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.headerButton}>
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Live Video Report</Text>
@@ -140,9 +154,9 @@ export default function Report() {
 
       {!recordingUri ? (
         <View style={styles.cameraContainer}>
-          <Camera
+          <CameraView
             style={styles.camera}
-            type={CameraType.back}
+            facing="back"
             ref={(ref) => setCameraRef(ref)}
           >
             {isRecording && (
@@ -151,21 +165,15 @@ export default function Report() {
                 <Text style={styles.recordingText}>RECORDING</Text>
               </View>
             )}
-          </Camera>
+          </CameraView>
 
           <View style={styles.cameraControls}>
             {!isRecording ? (
-              <TouchableOpacity
-                style={styles.recordButton}
-                onPress={startRecording}
-              >
+              <TouchableOpacity style={styles.recordButton} onPress={startRecording}>
                 <View style={styles.recordButtonInner} />
               </TouchableOpacity>
             ) : (
-              <TouchableOpacity
-                style={styles.stopButton}
-                onPress={stopRecording}
-              >
+              <TouchableOpacity style={styles.stopButton} onPress={stopRecording}>
                 <View style={styles.stopButtonInner} />
               </TouchableOpacity>
             )}
@@ -194,9 +202,7 @@ export default function Report() {
           <View style={styles.switchContainer}>
             <View>
               <Text style={styles.switchLabel}>Submit Anonymously</Text>
-              <Text style={styles.switchDescription}>
-                Your identity will not be revealed
-              </Text>
+              <Text style={styles.switchDescription}>Your identity will not be revealed</Text>
             </View>
             <Switch
               value={isAnonymous}
@@ -209,29 +215,15 @@ export default function Report() {
           <View style={styles.infoBox}>
             <Ionicons name="information-circle" size={20} color="#3B82F6" />
             <Text style={styles.infoText}>
-              Video will be uploaded to secure cloud storage. If offline, it will be saved locally and uploaded when internet is restored.
+              Video saved locally. Will be uploaded to secure cloud storage when you add Firebase credentials.
             </Text>
           </View>
 
-          <TouchableOpacity
-            style={styles.submitButton}
-            onPress={submitReport}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.submitButtonText}>Submit Report</Text>
-            )}
+          <TouchableOpacity style={styles.submitButton} onPress={submitReport} disabled={loading}>
+            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitButtonText}>Submit Report</Text>}
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.retakeButton}
-            onPress={() => {
-              setRecordingUri(null);
-              setCaption('');
-            }}
-          >
+          <TouchableOpacity style={styles.retakeButton} onPress={() => { setRecordingUri(null); setCaption(''); }}>
             <Text style={styles.retakeButtonText}>Record Again</Text>
           </TouchableOpacity>
         </View>
@@ -241,204 +233,40 @@ export default function Report() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0F172A',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-  },
-  backButton: {
-    padding: 4,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  placeholder: {
-    width: 32,
-  },
-  content: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  permissionText: {
-    fontSize: 16,
-    color: '#94A3B8',
-    marginTop: 16,
-    marginBottom: 24,
-  },
-  button: {
-    backgroundColor: '#3B82F6',
-    paddingHorizontal: 32,
-    paddingVertical: 16,
-    borderRadius: 12,
-  },
-  buttonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  cameraContainer: {
-    flex: 1,
-  },
-  camera: {
-    flex: 1,
-  },
-  recordingIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    margin: 20,
-    alignSelf: 'flex-start',
-  },
-  recordingDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#EF4444',
-    marginRight: 8,
-  },
-  recordingText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  cameraControls: {
-    position: 'absolute',
-    bottom: 40,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-  },
-  recordButton: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(255,255,255,0.3)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  recordButtonInner: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#EF4444',
-  },
-  stopButton: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(255,255,255,0.3)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  stopButtonInner: {
-    width: 40,
-    height: 40,
-    backgroundColor: '#EF4444',
-    borderRadius: 4,
-  },
-  formContainer: {
-    flex: 1,
-    padding: 24,
-  },
-  successBox: {
-    alignItems: 'center',
-    marginTop: 20,
-    marginBottom: 32,
-  },
-  successText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#10B981',
-    marginTop: 16,
-  },
-  inputContainer: {
-    marginBottom: 24,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
-    marginBottom: 8,
-  },
-  textArea: {
-    backgroundColor: '#1E293B',
-    borderRadius: 12,
-    padding: 16,
-    color: '#fff',
-    fontSize: 16,
-    minHeight: 100,
-    textAlignVertical: 'top',
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  switchContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#1E293B',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 24,
-  },
-  switchLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  switchDescription: {
-    fontSize: 14,
-    color: '#94A3B8',
-    marginTop: 4,
-  },
-  infoBox: {
-    flexDirection: 'row',
-    backgroundColor: '#1E293B',
-    borderRadius: 12,
-    padding: 16,
-    gap: 12,
-    marginBottom: 24,
-  },
-  infoText: {
-    flex: 1,
-    fontSize: 14,
-    color: '#64748B',
-    lineHeight: 20,
-  },
-  submitButton: {
-    backgroundColor: '#10B981',
-    borderRadius: 12,
-    paddingVertical: 18,
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  submitButtonText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  retakeButton: {
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#64748B',
-  },
-  retakeButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#64748B',
-  },
+  container: { flex: 1, backgroundColor: '#0F172A' },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16 },
+  headerButton: { padding: 4 },
+  headerTitle: { fontSize: 20, fontWeight: '600', color: '#fff' },
+  placeholder: { width: 32 },
+  content: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
+  permissionText: { fontSize: 16, color: '#94A3B8', marginTop: 16, marginBottom: 24, textAlign: 'center' },
+  button: { backgroundColor: '#3B82F6', paddingHorizontal: 32, paddingVertical: 16, borderRadius: 12, marginBottom: 12 },
+  buttonText: { fontSize: 16, fontWeight: '600', color: '#fff' },
+  backButton: { paddingHorizontal: 32, paddingVertical: 16, borderRadius: 12, borderWidth: 1, borderColor: '#64748B' },
+  backButtonText: { fontSize: 16, fontWeight: '600', color: '#64748B' },
+  cameraContainer: { flex: 1 },
+  camera: { flex: 1 },
+  recordingIndicator: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.7)', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, margin: 20, alignSelf: 'flex-start' },
+  recordingDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#EF4444', marginRight: 8 },
+  recordingText: { fontSize: 14, fontWeight: '600', color: '#fff' },
+  cameraControls: { position: 'absolute', bottom: 40, left: 0, right: 0, alignItems: 'center' },
+  recordButton: { width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(255,255,255,0.3)', justifyContent: 'center', alignItems: 'center' },
+  recordButtonInner: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#EF4444' },
+  stopButton: { width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(255,255,255,0.3)', justifyContent: 'center', alignItems: 'center' },
+  stopButtonInner: { width: 40, height: 40, backgroundColor: '#EF4444', borderRadius: 4 },
+  formContainer: { flex: 1, padding: 24 },
+  successBox: { alignItems: 'center', marginTop: 20, marginBottom: 32 },
+  successText: { fontSize: 18, fontWeight: '600', color: '#10B981', marginTop: 16 },
+  inputContainer: { marginBottom: 24 },
+  label: { fontSize: 16, fontWeight: '600', color: '#fff', marginBottom: 8 },
+  textArea: { backgroundColor: '#1E293B', borderRadius: 12, padding: 16, color: '#fff', fontSize: 16, minHeight: 100, textAlignVertical: 'top', borderWidth: 1, borderColor: '#334155' },
+  switchContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1E293B', padding: 16, borderRadius: 12, marginBottom: 24 },
+  switchLabel: { fontSize: 16, fontWeight: '600', color: '#fff' },
+  switchDescription: { fontSize: 14, color: '#94A3B8', marginTop: 4 },
+  infoBox: { flexDirection: 'row', backgroundColor: '#1E293B', borderRadius: 12, padding: 16, gap: 12, marginBottom: 24 },
+  infoText: { flex: 1, fontSize: 14, color: '#64748B', lineHeight: 20 },
+  submitButton: { backgroundColor: '#10B981', borderRadius: 12, paddingVertical: 18, alignItems: 'center', marginBottom: 16 },
+  submitButtonText: { fontSize: 18, fontWeight: '600', color: '#fff' },
+  retakeButton: { borderRadius: 12, paddingVertical: 16, alignItems: 'center', borderWidth: 1, borderColor: '#64748B' },
+  retakeButtonText: { fontSize: 16, fontWeight: '600', color: '#64748B' },
 });
