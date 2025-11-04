@@ -114,6 +114,8 @@ class SafeGuardAPITester:
         print("\n=== 2. SECURITY USER AUTHENTICATION ===")
         
         # Register security user with valid invite code
+        import time
+        timestamp = int(time.time())
         self.security_data = {
             "email": f"security.team.{timestamp}@safeguard.com",
             "password": "SecurePass123!",
