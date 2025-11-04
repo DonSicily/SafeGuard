@@ -66,12 +66,14 @@ class SafeGuardAPITester:
         """Test Civil User Registration & Login"""
         print("\n=== 1. CIVIL USER AUTHENTICATION ===")
         
-        # Register civil user
+        # Register civil user with unique email
+        import time
+        timestamp = int(time.time())
         civil_data = {
-            "email": "civil.user@safeguard.com",
+            "email": f"civil.user.{timestamp}@safeguard.com",
             "password": "SecurePass123!",
             "confirm_password": "SecurePass123!",
-            "phone": "+1234567890",
+            "phone": f"+123456{timestamp % 10000}",
             "role": "civil"
         }
         
