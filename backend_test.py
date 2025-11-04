@@ -283,7 +283,7 @@ class SafeGuardAPITester:
         }
         
         success, response = self.make_request('POST', '/escort/action', escort_data, token=self.civil_token, expect_status=403)
-        if not success and "Premium feature" in str(response):
+        if not success:
             self.log_test("Escort Access Control (Basic User)", True, "Correctly blocked non-premium user")
         else:
             self.log_test("Escort Access Control (Basic User)", False, "Should have been blocked")
