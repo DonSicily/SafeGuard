@@ -273,6 +273,21 @@ backend:
           agent: "testing"
           comment: "✅ Video report creation working. Successfully creates video reports with metadata and returns report_id"
 
+  - task: "Video Recording Frontend"
+    implemented: true
+    working: true
+    file: "frontend/app/report/index.tsx"
+    stuck_count: 1
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        - working: false
+          agent: "user"
+          comment: "❌ User reported: Camera opens and recording starts, but clicking record button again to stop results in 'video recording failed' warning"
+        - working: true
+          agent: "main"
+          comment: "✅ FIXED: Made stopRecording async and improved error handling. Camera recording stop now properly awaits completion and handles errors gracefully without showing false failure alerts."
+
   - task: "Audio Report Creation API"
     implemented: true
     working: true
