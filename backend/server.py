@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Header, Body
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Header, Body, Query
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -6,12 +6,14 @@ import os
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field, EmailStr
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import uuid
 from datetime import datetime, timedelta
 import bcrypt
 import jwt
 from bson import ObjectId
+import math
+import hashlib
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -21,12 +23,17 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
+# Create geospatial indexes
+async def create_indexes():
+    await db.civil_reports.create_index([("location", "2dsphere")])
+    await db.civil_tracks.create_index([("currentLocation.coordinates", "2dsphere")])
+    await db.security_teams.create_index([("teamLocation.coordinates", "2dsphere")])
+
 # JWT Configuration
-JWT_SECRET = os.environ.get('JWT_SECRET', 'your-secret-key-change-in-production')
+JWT_SECRET = os.environ.get('JWT_SECRET', 'safeguard-secret-key-2025')
 JWT_ALGORITHM = 'HS256'
 JWT_EXPIRATION_HOURS = 24 * 30  # 30 days
 
-# Create the main app
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
 
@@ -35,6 +42,9 @@ class UserRegister(BaseModel):
     email: EmailStr
     password: str
     confirm_password: str
+    phone: Optional[str] = None
+    role: str = "civil"  # "civil" or "security"
+    invite_code: Optional[str] = None  # Required for security role
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -44,32 +54,18 @@ class GoogleAuthData(BaseModel):
     google_id: str
     email: EmailStr
     name: str
+    role: str = "civil"
 
-class UserProfile(BaseModel):
-    id: str
-    email: str
-    name: Optional[str] = None
-    is_premium: bool = False
-    is_verified: bool = False
-    app_name: Optional[str] = "SafeGuard"
-    app_logo: Optional[str] = "shield"
-    created_at: datetime
-
-class AppCustomization(BaseModel):
-    app_name: str
-    app_logo: str
-
-class LocationData(BaseModel):
+class LocationPoint(BaseModel):
     latitude: float
     longitude: float
     accuracy: Optional[float] = None
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
-class PanicActivate(BaseModel):
-    activated: bool = True
-
-class EscortAction(BaseModel):
-    action: str  # "start" or "stop"
+class SetTeamLocation(BaseModel):
+    latitude: float
+    longitude: float
+    radius_km: float = 10.0  # Default 10km radius
 
 class ReportCreate(BaseModel):
     type: str  # "video" or "audio"
@@ -78,10 +74,15 @@ class ReportCreate(BaseModel):
     file_url: Optional[str] = None
     thumbnail: Optional[str] = None
     uploaded: bool = False
+    latitude: float
+    longitude: float
 
-class PaymentInit(BaseModel):
-    amount: float
-    email: str
+class UserSearch(BaseModel):
+    search_term: str  # phone or email
+
+class AppCustomization(BaseModel):
+    app_name: str
+    app_logo: str
 
 # ===== HELPER FUNCTIONS =====
 def hash_password(password: str) -> str:
@@ -90,10 +91,11 @@ def hash_password(password: str) -> str:
 def verify_password(password: str, hashed: str) -> bool:
     return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
 
-def create_token(user_id: str, email: str) -> str:
+def create_token(user_id: str, email: str, role: str) -> str:
     payload = {
         'user_id': user_id,
         'email': email,
+        'role': role,
         'exp': datetime.utcnow() + timedelta(hours=JWT_EXPIRATION_HOURS)
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
@@ -120,24 +122,56 @@ async def get_current_user(authorization: Optional[str] = Header(None)):
     
     return user
 
+def calculate_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Calculate distance between two points in km using Haversine formula"""
+    R = 6371  # Earth's radius in km
+    
+    lat1_rad = math.radians(lat1)
+    lat2_rad = math.radians(lat2)
+    delta_lat = math.radians(lat2 - lat1)
+    delta_lon = math.radians(lon2 - lon1)
+    
+    a = math.sin(delta_lat/2)**2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(delta_lon/2)**2
+    c = 2 * math.asin(math.sqrt(a))
+    
+    return R * c
+
+def geohash(lat: float, lon: float, precision: int = 6) -> str:
+    """Simple geohash implementation"""
+    return hashlib.md5(f"{lat:.{precision}f},{lon:.{precision}f}".encode()).hexdigest()[:precision]
+
+# Mock Push Notification
+async def send_push_notification(user_ids: List[str], title: str, body: str, data: dict = None):
+    """Mock push notification - implement with FCM/Expo Push later"""
+    logging.info(f"MOCK PUSH: {title} to {len(user_ids)} users - {body}")
+    # TODO: Implement with Expo Push Notifications
+    return {"status": "mocked", "sent_to": len(user_ids)}
+
 # ===== AUTHENTICATION ROUTES =====
 @api_router.post("/auth/register")
 async def register(user_data: UserRegister):
-    # Check if passwords match
+    # Check passwords match
     if user_data.password != user_data.confirm_password:
         raise HTTPException(status_code=400, detail="Passwords do not match")
     
-    # Check if user already exists
+    # Check if user exists
     existing_user = await db.users.find_one({'email': user_data.email})
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
     
-    # Create new user
+    # Validate security role
+    if user_data.role == "security":
+        if not user_data.invite_code or user_data.invite_code != "SECURITY2025":
+            raise HTTPException(status_code=403, detail="Invalid security invite code")
+    
+    # Create user
     user = {
         'email': user_data.email,
+        'phone': user_data.phone,
         'password': hash_password(user_data.password),
+        'role': user_data.role,
         'is_premium': False,
-        'is_verified': False,  # Email verification pending
+        'is_verified': True,  # Auto-verify for demo
         'app_name': 'SafeGuard',
         'app_logo': 'shield',
         'created_at': datetime.utcnow(),
@@ -147,62 +181,61 @@ async def register(user_data: UserRegister):
     result = await db.users.insert_one(user)
     user_id = str(result.inserted_id)
     
-    # Generate token
-    token = create_token(user_id, user_data.email)
+    # Create security team if security user
+    if user_data.role == "security":
+        team = {
+            'user_id': user_id,
+            'teamLocation': {
+                'type': 'Point',
+                'coordinates': [0, 0]  # Default, user will set
+            },
+            'radius_km': 10.0,
+            'created_at': datetime.utcnow()
+        }
+        await db.security_teams.insert_one(team)
     
-    # TODO: Send confirmation email
-    # For now, we'll mark as verified (implement email service later)
-    await db.users.update_one(
-        {'_id': ObjectId(user_id)},
-        {'$set': {'is_verified': True}}
-    )
+    token = create_token(user_id, user_data.email, user_data.role)
     
     return {
         'token': token,
         'user_id': user_id,
         'email': user_data.email,
-        'message': 'Registration successful. Confirmation email sent.'
+        'role': user_data.role,
+        'is_premium': False
     }
 
 @api_router.post("/auth/login")
 async def login(credentials: UserLogin):
-    # Find user
     user = await db.users.find_one({'email': credentials.email})
     if not user or not user.get('password'):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
-    # Verify password
     if not verify_password(credentials.password, user['password']):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
-    # Check if email is verified
-    if not user.get('is_verified', False):
-        raise HTTPException(status_code=403, detail="Email not verified. Please check your email.")
-    
-    # Generate token
-    token = create_token(str(user['_id']), user['email'])
+    token = create_token(str(user['_id']), user['email'], user.get('role', 'civil'))
     
     return {
         'token': token,
         'user_id': str(user['_id']),
         'email': user['email'],
+        'role': user.get('role', 'civil'),
         'is_premium': user.get('is_premium', False)
     }
 
 @api_router.post("/auth/google")
 async def google_auth(auth_data: GoogleAuthData):
-    # Check if user exists
     user = await db.users.find_one({'google_id': auth_data.google_id})
     
     if not user:
-        # Create new user
         user = {
             'email': auth_data.email,
             'name': auth_data.name,
             'google_id': auth_data.google_id,
             'password': None,
+            'role': auth_data.role,
             'is_premium': False,
-            'is_verified': True,  # Google accounts are pre-verified
+            'is_verified': True,
             'app_name': 'SafeGuard',
             'app_logo': 'shield',
             'created_at': datetime.utcnow()
@@ -212,25 +245,15 @@ async def google_auth(auth_data: GoogleAuthData):
     else:
         user_id = str(user['_id'])
     
-    # Generate token
-    token = create_token(user_id, auth_data.email)
+    token = create_token(user_id, auth_data.email, user.get('role', auth_data.role))
     
     return {
         'token': token,
         'user_id': user_id,
         'email': auth_data.email,
-        'is_premium': user.get('is_premium', False) if user else False
+        'role': user.get('role', auth_data.role),
+        'is_premium': user.get('is_premium', False)
     }
-
-@api_router.get("/auth/confirm-email/{token}")
-async def confirm_email(token: str):
-    # Verify token and mark email as confirmed
-    payload = verify_token(token)
-    await db.users.update_one(
-        {'_id': ObjectId(payload['user_id'])},
-        {'$set': {'is_verified': True}}
-    )
-    return {'message': 'Email confirmed successfully'}
 
 # ===== USER ROUTES =====
 @api_router.get("/user/profile")
@@ -238,9 +261,9 @@ async def get_profile(user = Depends(get_current_user)):
     return {
         'id': str(user['_id']),
         'email': user['email'],
-        'name': user.get('name'),
+        'phone': user.get('phone'),
+        'role': user.get('role', 'civil'),
         'is_premium': user.get('is_premium', False),
-        'is_verified': user.get('is_verified', False),
         'app_name': user.get('app_name', 'SafeGuard'),
         'app_logo': user.get('app_logo', 'shield'),
         'created_at': user.get('created_at')
@@ -250,152 +273,165 @@ async def get_profile(user = Depends(get_current_user)):
 async def customize_app(customization: AppCustomization, user = Depends(get_current_user)):
     await db.users.update_one(
         {'_id': user['_id']},
-        {'$set': {
-            'app_name': customization.app_name,
-            'app_logo': customization.app_logo
-        }}
+        {'$set': {'app_name': customization.app_name, 'app_logo': customization.app_logo}}
     )
-    return {'message': 'App customization updated successfully'}
+    return {'message': 'App customization updated'}
 
-# ===== PANIC BUTTON ROUTES =====
+# ===== CIVIL USER ROUTES =====
 @api_router.post("/panic/activate")
-async def activate_panic(panic_data: PanicActivate, user = Depends(get_current_user)):
-    # Create panic event
+async def activate_panic(panic_data: LocationPoint, user = Depends(get_current_user)):
+    if user.get('role') != 'civil':
+        raise HTTPException(status_code=403, detail="Only civil users can activate panic")
+    
     panic_event = {
         'user_id': str(user['_id']),
         'activated_at': datetime.utcnow(),
         'is_active': True,
-        'locations': []
+        'location': {
+            'type': 'Point',
+            'coordinates': [panic_data.longitude, panic_data.latitude]
+        },
+        'locations': [{
+            'latitude': panic_data.latitude,
+            'longitude': panic_data.longitude,
+            'accuracy': panic_data.accuracy,
+            'timestamp': panic_data.timestamp
+        }]
     }
     result = await db.panic_events.insert_one(panic_event)
     
-    return {
-        'panic_id': str(result.inserted_id),
-        'message': 'Panic mode activated. Stay safe.'
-    }
+    # Notify nearby security users
+    security_teams = await db.security_teams.find({
+        'teamLocation.coordinates': {
+            '$near': {
+                '$geometry': {'type': 'Point', 'coordinates': [panic_data.longitude, panic_data.latitude]},
+                '$maxDistance': 50000  # 50km max
+            }
+        }
+    }).to_list(100)
+    
+    security_user_ids = [team['user_id'] for team in security_teams]
+    if security_user_ids:
+        await send_push_notification(
+            security_user_ids,
+            "🚨 PANIC ALERT",
+            f"Panic button activated nearby at {panic_data.latitude:.4f}, {panic_data.longitude:.4f}",
+            {'type': 'panic', 'event_id': str(result.inserted_id)}
+        )
+    
+    return {'panic_id': str(result.inserted_id), 'message': 'Panic activated'}
 
 @api_router.post("/panic/location")
-async def log_panic_location(location: LocationData, user = Depends(get_current_user)):
-    # Find active panic event
-    panic_event = await db.panic_events.find_one({
-        'user_id': str(user['_id']),
-        'is_active': True
-    })
-    
+async def log_panic_location(location: LocationPoint, user = Depends(get_current_user)):
+    panic_event = await db.panic_events.find_one({'user_id': str(user['_id']), 'is_active': True})
     if not panic_event:
-        raise HTTPException(status_code=404, detail="No active panic event")
-    
-    # Add location to panic event
-    location_entry = {
-        'latitude': location.latitude,
-        'longitude': location.longitude,
-        'accuracy': location.accuracy,
-        'timestamp': location.timestamp
-    }
+        raise HTTPException(status_code=404, detail="No active panic")
     
     await db.panic_events.update_one(
         {'_id': panic_event['_id']},
-        {'$push': {'locations': location_entry}}
+        {'$push': {'locations': {
+            'latitude': location.latitude,
+            'longitude': location.longitude,
+            'accuracy': location.accuracy,
+            'timestamp': location.timestamp
+        }}}
     )
-    
-    return {'message': 'Location logged successfully'}
+    return {'message': 'Location logged'}
 
 @api_router.post("/panic/deactivate")
 async def deactivate_panic(user = Depends(get_current_user)):
-    # Deactivate panic event
-    result = await db.panic_events.update_one(
+    await db.panic_events.update_one(
         {'user_id': str(user['_id']), 'is_active': True},
         {'$set': {'is_active': False, 'deactivated_at': datetime.utcnow()}}
     )
-    
-    return {'message': 'Panic mode deactivated'}
+    return {'message': 'Panic deactivated'}
 
-# ===== ESCORT ROUTES =====
 @api_router.post("/escort/action")
-async def escort_action(action_data: EscortAction, user = Depends(get_current_user)):
-    # Check if user is premium
-    if not user.get('is_premium', False):
-        raise HTTPException(status_code=403, detail="This feature is only available for premium users")
+async def escort_action(action: str = Body(...), location: LocationPoint = Body(...), user = Depends(get_current_user)):
+    if user.get('role') != 'civil':
+        raise HTTPException(status_code=403, detail="Only civil users can use escort")
+    if not user.get('is_premium'):
+        raise HTTPException(status_code=403, detail="Premium feature")
     
-    if action_data.action == 'start':
-        # Check if there's already an active session
-        active_session = await db.escort_sessions.find_one({
-            'user_id': str(user['_id']),
-            'is_active': True
-        })
-        
-        if active_session:
-            return {
-                'session_id': str(active_session['_id']),
-                'message': 'Escort session already active'
-            }
-        
-        # Create new escort session
+    if action == 'start':
         session = {
             'user_id': str(user['_id']),
             'started_at': datetime.utcnow(),
             'is_active': True,
+            'currentLocation': {
+                'type': 'Point',
+                'coordinates': [location.longitude, location.latitude]
+            },
             'locations': []
         }
         result = await db.escort_sessions.insert_one(session)
         
-        return {
-            'session_id': str(result.inserted_id),
-            'message': 'Escort tracking started'
-        }
-    
-    elif action_data.action == 'stop':
-        # Find active session
-        session = await db.escort_sessions.find_one({
+        # Create real-time track document
+        await db.civil_tracks.insert_one({
             'user_id': str(user['_id']),
+            'session_id': str(result.inserted_id),
+            'currentLocation': {
+                'type': 'Point',
+                'coordinates': [location.longitude, location.latitude],
+                'timestamp': datetime.utcnow()
+            },
             'is_active': True
         })
         
-        if not session:
-            raise HTTPException(status_code=404, detail="No active escort session")
-        
-        # Delete all tracking data as per requirements
-        await db.escort_sessions.delete_one({'_id': session['_id']})
-        
-        return {'message': 'Arrived safely. Tracking data deleted.'}
+        return {'session_id': str(result.inserted_id), 'message': 'Escort started'}
     
-    else:
-        raise HTTPException(status_code=400, detail="Invalid action")
+    elif action == 'stop':
+        session = await db.escort_sessions.find_one({'user_id': str(user['_id']), 'is_active': True})
+        if not session:
+            raise HTTPException(status_code=404, detail="No active session")
+        
+        # Schedule deletion after 24h
+        await db.escort_sessions.update_one(
+            {'_id': session['_id']},
+            {'$set': {'is_active': False, 'ended_at': datetime.utcnow(), 'delete_at': datetime.utcnow() + timedelta(hours=24)}}
+        )
+        await db.civil_tracks.delete_one({'user_id': str(user['_id']), 'session_id': str(session['_id'])})
+        
+        return {'message': 'Arrived safely. Data will be deleted in 24h'}
 
 @api_router.post("/escort/location")
-async def log_escort_location(location: LocationData, user = Depends(get_current_user)):
-    # Check if user is premium
-    if not user.get('is_premium', False):
-        raise HTTPException(status_code=403, detail="This feature is only available for premium users")
+async def log_escort_location(location: LocationPoint, user = Depends(get_current_user)):
+    if not user.get('is_premium'):
+        raise HTTPException(status_code=403, detail="Premium feature")
     
-    # Find active escort session
-    session = await db.escort_sessions.find_one({
-        'user_id': str(user['_id']),
-        'is_active': True
-    })
-    
+    session = await db.escort_sessions.find_one({'user_id': str(user['_id']), 'is_active': True})
     if not session:
-        raise HTTPException(status_code=404, detail="No active escort session")
+        raise HTTPException(status_code=404, detail="No active session")
     
-    # Add location to session
-    location_entry = {
-        'latitude': location.latitude,
-        'longitude': location.longitude,
-        'accuracy': location.accuracy,
-        'timestamp': location.timestamp
-    }
-    
+    # Update session history
     await db.escort_sessions.update_one(
         {'_id': session['_id']},
-        {'$push': {'locations': location_entry}}
+        {'$push': {'locations': {
+            'latitude': location.latitude,
+            'longitude': location.longitude,
+            'timestamp': location.timestamp
+        }}}
     )
     
-    return {'message': 'Location logged successfully'}
+    # Update real-time track
+    await db.civil_tracks.update_one(
+        {'user_id': str(user['_id']), 'is_active': True},
+        {'$set': {
+            'currentLocation': {
+                'type': 'Point',
+                'coordinates': [location.longitude, location.latitude],
+                'timestamp': datetime.utcnow()
+            }
+        }}
+    )
+    
+    return {'message': 'Location logged'}
 
-# ===== REPORT ROUTES =====
 @api_router.post("/report/create")
 async def create_report(report: ReportCreate, user = Depends(get_current_user)):
-    # Create report
+    if user.get('role') != 'civil':
+        raise HTTPException(status_code=403, detail="Only civil users can create reports")
+    
     report_data = {
         'user_id': str(user['_id']),
         'type': report.type,
@@ -404,68 +440,249 @@ async def create_report(report: ReportCreate, user = Depends(get_current_user)):
         'file_url': report.file_url,
         'thumbnail': report.thumbnail,
         'uploaded': report.uploaded,
+        'location': {
+            'type': 'Point',
+            'coordinates': [report.longitude, report.latitude]
+        },
+        'geohash': geohash(report.latitude, report.longitude),
         'created_at': datetime.utcnow()
     }
     
-    result = await db.reports.insert_one(report_data)
+    result = await db.civil_reports.insert_one(report_data)
     
-    return {
-        'report_id': str(result.inserted_id),
-        'message': 'Report created successfully'
-    }
+    # Notify nearby security
+    security_teams = await db.security_teams.find({
+        'teamLocation.coordinates': {
+            '$near': {
+                '$geometry': {'type': 'Point', 'coordinates': [report.longitude, report.latitude]},
+                '$maxDistance': 50000
+            }
+        }
+    }).to_list(100)
+    
+    security_user_ids = [team['user_id'] for team in security_teams]
+    if security_user_ids:
+        await send_push_notification(
+            security_user_ids,
+            f"📹 New {report.type.upper()} Report",
+            f"Report submitted nearby: {report.caption or 'No caption'}",
+            {'type': 'report', 'report_id': str(result.inserted_id)}
+        )
+    
+    return {'report_id': str(result.inserted_id), 'message': 'Report created'}
 
 @api_router.get("/report/my-reports")
 async def get_my_reports(user = Depends(get_current_user)):
-    reports = await db.reports.find({'user_id': str(user['_id'])}).to_list(100)
-    
+    reports = await db.civil_reports.find({'user_id': str(user['_id'])}).sort('created_at', -1).to_list(100)
     return [{
-        'id': str(report['_id']),
-        'type': report['type'],
-        'caption': report.get('caption'),
-        'is_anonymous': report.get('is_anonymous', False),
-        'file_url': report.get('file_url'),
-        'thumbnail': report.get('thumbnail'),
-        'uploaded': report.get('uploaded', False),
-        'created_at': report.get('created_at')
-    } for report in reports]
+        'id': str(r['_id']),
+        'type': r['type'],
+        'caption': r.get('caption'),
+        'is_anonymous': r.get('is_anonymous'),
+        'file_url': r.get('file_url'),
+        'thumbnail': r.get('thumbnail'),
+        'uploaded': r.get('uploaded'),
+        'latitude': r['location']['coordinates'][1],
+        'longitude': r['location']['coordinates'][0],
+        'created_at': r['created_at']
+    } for r in reports]
 
-@api_router.put("/report/{report_id}/upload-complete")
-async def mark_report_uploaded(report_id: str, file_url: str = Body(...), user = Depends(get_current_user)):
-    # Update report upload status
-    result = await db.reports.update_one(
-        {'_id': ObjectId(report_id), 'user_id': str(user['_id'])},
-        {'$set': {'uploaded': True, 'file_url': file_url}}
+# ===== SECURITY USER ROUTES =====
+@api_router.post("/security/set-location")
+async def set_team_location(location: SetTeamLocation, user = Depends(get_current_user)):
+    if user.get('role') != 'security':
+        raise HTTPException(status_code=403, detail="Security users only")
+    
+    await db.security_teams.update_one(
+        {'user_id': str(user['_id'])},
+        {'$set': {
+            'teamLocation': {
+                'type': 'Point',
+                'coordinates': [location.longitude, location.latitude]
+            },
+            'radius_km': location.radius_km,
+            'updated_at': datetime.utcnow()
+        }},
+        upsert=True
     )
-    
-    if result.modified_count == 0:
-        raise HTTPException(status_code=404, detail="Report not found")
-    
-    return {'message': 'Report marked as uploaded'}
+    return {'message': 'Team location set'}
 
-# ===== PAYMENT ROUTES =====
-@api_router.post("/payment/init")
-async def init_payment(payment: PaymentInit, user = Depends(get_current_user)):
-    # TODO: Integrate with Paystack API
-    # For now, return a mock authorization URL
+@api_router.get("/security/team-location")
+async def get_team_location(user = Depends(get_current_user)):
+    if user.get('role') != 'security':
+        raise HTTPException(status_code=403, detail="Security users only")
+    
+    team = await db.security_teams.find_one({'user_id': str(user['_id'])})
+    if not team:
+        return {'latitude': 0, 'longitude': 0, 'radius_km': 10.0}
+    
     return {
-        'authorization_url': 'https://paystack.com/pay/mock-reference',
-        'reference': f'ref_{uuid.uuid4()}',
-        'message': 'Payment initialization successful (Paystack integration pending)'
+        'latitude': team['teamLocation']['coordinates'][1],
+        'longitude': team['teamLocation']['coordinates'][0],
+        'radius_km': team.get('radius_km', 10.0)
+    }
+
+@api_router.get("/security/nearby-reports")
+async def get_nearby_reports(user = Depends(get_current_user)):
+    if user.get('role') != 'security':
+        raise HTTPException(status_code=403, detail="Security users only")
+    
+    team = await db.security_teams.find_one({'user_id': str(user['_id'])})
+    if not team:
+        return []
+    
+    radius_meters = team.get('radius_km', 10.0) * 1000
+    
+    reports = await db.civil_reports.find({
+        'location': {
+            '$near': {
+                '$geometry': team['teamLocation'],
+                '$maxDistance': radius_meters
+            }
+        }
+    }).sort('created_at', -1).to_list(100)
+    
+    result = []
+    for r in reports:
+        user_info = await db.users.find_one({'_id': ObjectId(r['user_id'])})
+        result.append({
+            'id': str(r['_id']),
+            'type': r['type'],
+            'caption': r.get('caption'),
+            'is_anonymous': r.get('is_anonymous'),
+            'file_url': r.get('file_url'),
+            'thumbnail': r.get('thumbnail'),
+            'latitude': r['location']['coordinates'][1],
+            'longitude': r['location']['coordinates'][0],
+            'created_at': r['created_at'],
+            'user_email': user_info['email'] if not r.get('is_anonymous') else 'Anonymous',
+            'user_phone': user_info.get('phone') if not r.get('is_anonymous') else 'Anonymous'
+        })
+    
+    return result
+
+@api_router.get("/security/nearby-panics")
+async def get_nearby_panics(user = Depends(get_current_user)):
+    if user.get('role') != 'security':
+        raise HTTPException(status_code=403, detail="Security users only")
+    
+    team = await db.security_teams.find_one({'user_id': str(user['_id'])})
+    if not team:
+        return []
+    
+    radius_meters = team.get('radius_km', 10.0) * 1000
+    
+    panics = await db.panic_events.find({
+        'is_active': True,
+        'location': {
+            '$near': {
+                '$geometry': team['teamLocation'],
+                '$maxDistance': radius_meters
+            }
+        }
+    }).sort('activated_at', -1).to_list(50)
+    
+    result = []
+    for p in panics:
+        user_info = await db.users.find_one({'_id': ObjectId(p['user_id'])})
+        latest_location = p['locations'][-1] if p.get('locations') else None
+        result.append({
+            'id': str(p['_id']),
+            'user_email': user_info['email'],
+            'user_phone': user_info.get('phone'),
+            'activated_at': p['activated_at'],
+            'latitude': latest_location['latitude'] if latest_location else p['location']['coordinates'][1],
+            'longitude': latest_location['longitude'] if latest_location else p['location']['coordinates'][0],
+            'location_count': len(p.get('locations', []))
+        })
+    
+    return result
+
+@api_router.post("/security/search-user")
+async def search_user(search: UserSearch, user = Depends(get_current_user)):
+    if user.get('role') != 'security':
+        raise HTTPException(status_code=403, detail="Security users only")
+    
+    # Search by phone or email
+    civil_user = await db.users.find_one({
+        '$or': [
+            {'email': search.search_term},
+            {'phone': search.search_term}
+        ],
+        'role': 'civil'
+    })
+    
+    if not civil_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Get current track
+    current_track = await db.civil_tracks.find_one({'user_id': str(civil_user['_id']), 'is_active': True})
+    
+    # Get historical sessions
+    sessions = await db.escort_sessions.find(
+        {'user_id': str(civil_user['_id'])}
+    ).sort('started_at', -1).limit(10).to_list(10)
+    
+    return {
+        'user_id': str(civil_user['_id']),
+        'email': civil_user['email'],
+        'phone': civil_user.get('phone'),
+        'is_premium': civil_user.get('is_premium', False),
+        'current_location': {
+            'latitude': current_track['currentLocation']['coordinates'][1],
+            'longitude': current_track['currentLocation']['coordinates'][0],
+            'timestamp': current_track['currentLocation']['timestamp']
+        } if current_track else None,
+        'recent_sessions': [{
+            'session_id': str(s['_id']),
+            'started_at': s['started_at'],
+            'ended_at': s.get('ended_at'),
+            'is_active': s.get('is_active', False),
+            'location_count': len(s.get('locations', []))
+        } for s in sessions]
+    }
+
+@api_router.get("/security/user-history/{user_id}")
+async def get_user_history(user_id: str, user = Depends(get_current_user)):
+    if user.get('role') != 'security':
+        raise HTTPException(status_code=403, detail="Security users only")
+    
+    # Get all escort sessions for this user
+    sessions = await db.escort_sessions.find(
+        {'user_id': user_id}
+    ).sort('started_at', -1).to_list(50)
+    
+    result = []
+    for s in sessions:
+        result.append({
+            'session_id': str(s['_id']),
+            'started_at': s['started_at'],
+            'ended_at': s.get('ended_at'),
+            'is_active': s.get('is_active', False),
+            'locations': s.get('locations', [])
+        })
+    
+    return result
+
+# ===== PAYMENT ROUTES (MOCKED) =====
+@api_router.post("/payment/init")
+async def init_payment(amount: float = Body(...), user = Depends(get_current_user)):
+    # TODO: Integrate Paystack
+    reference = f"ref_{uuid.uuid4()}"
+    return {
+        'authorization_url': f'https://paystack.com/pay/{reference}',
+        'reference': reference,
+        'message': 'Paystack integration pending - payment mocked'
     }
 
 @api_router.get("/payment/verify/{reference}")
 async def verify_payment(reference: str, user = Depends(get_current_user)):
-    # TODO: Verify payment with Paystack
-    # For now, mark user as premium
+    # TODO: Verify with Paystack
     await db.users.update_one(
         {'_id': user['_id']},
         {'$set': {'is_premium': True}}
     )
-    
-    return {
-        'status': 'success',
-        'message': 'Payment verified. You are now a premium user!'
-    }
+    return {'status': 'success', 'message': 'Premium activated (mocked)'}
 
 # Include router
 app.include_router(api_router)
@@ -478,13 +695,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+@app.on_event("startup")
+async def startup():
+    await create_indexes()
+    logger.info("MongoDB indexes created")
+
 @app.on_event("shutdown")
-async def shutdown_db_client():
+async def shutdown():
     client.close()
