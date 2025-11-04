@@ -10,9 +10,14 @@ export default function Index() {
   const [loading, setLoading] = useState(true);
   const [showPanicPrompt, setShowPanicPrompt] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    checkAuth();
+    // Add a small delay to ensure component is mounted
+    const timer = setTimeout(() => {
+      checkAuth();
+    }, 100);
+    return () => clearTimeout(timer);
   }, []);
 
   const checkAuth = async () => {
@@ -21,12 +26,17 @@ export default function Index() {
       const role = await AsyncStorage.getItem('user_role');
       
       if (!token) {
-        router.replace('/auth/login');
+        // No token, go to login
+        setTimeout(() => {
+          router.replace('/auth/login');
+        }, 100);
       } else {
         setUserRole(role);
         if (role === 'security') {
           // Security users go directly to their dashboard
-          router.replace('/security/home');
+          setTimeout(() => {
+            router.replace('/security/home');
+          }, 100);
         } else {
           // Civil users see panic prompt
           setShowPanicPrompt(true);
@@ -35,7 +45,11 @@ export default function Index() {
       }
     } catch (error) {
       console.error('Auth check error:', error);
-      setLoading(false);
+      setError('Failed to check authentication');
+      // Fallback to login
+      setTimeout(() => {
+        router.replace('/auth/login');
+      }, 1000);
     }
   };
 
