@@ -114,7 +114,7 @@ class SafeGuardAPITester:
         print("\n=== 2. SECURITY USER AUTHENTICATION ===")
         
         # Register security user with valid invite code
-        security_data = {
+        self.security_data = {
             "email": f"security.team.{timestamp}@safeguard.com",
             "password": "SecurePass123!",
             "confirm_password": "SecurePass123!",
@@ -123,7 +123,7 @@ class SafeGuardAPITester:
             "invite_code": "SECURITY2025"
         }
         
-        success, response = self.make_request('POST', '/auth/register', security_data, expect_status=200)
+        success, response = self.make_request('POST', '/auth/register', self.security_data, expect_status=200)
         if success:
             self.security_token = response.get('token')
             self.security_user_id = response.get('user_id')
@@ -134,7 +134,7 @@ class SafeGuardAPITester:
             
         # Test security user login
         login_data = {
-            "email": security_data["email"],
+            "email": self.security_data["email"],
             "password": "SecurePass123!"
         }
         
