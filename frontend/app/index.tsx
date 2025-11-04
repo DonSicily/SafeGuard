@@ -8,7 +8,8 @@ import { Ionicons } from '@expo/vector-icons';
 export default function Index() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [showPanicPrompt, setShowPanicPrompt] = useState(true);
+  const [showPanicPrompt, setShowPanicPrompt] = useState(false);
+  const [userRole, setUserRole] = useState<string | null>(null);
 
   useEffect(() => {
     checkAuth();
@@ -17,11 +18,20 @@ export default function Index() {
   const checkAuth = async () => {
     try {
       const token = await AsyncStorage.getItem('auth_token');
+      const role = await AsyncStorage.getItem('user_role');
+      
       if (!token) {
-        // Not logged in, redirect to auth
         router.replace('/auth/login');
       } else {
-        setLoading(false);
+        setUserRole(role);
+        if (role === 'security') {
+          // Security users go directly to their dashboard
+          router.replace('/security/home');
+        } else {
+          // Civil users see panic prompt
+          setShowPanicPrompt(true);
+          setLoading(false);
+        }
       }
     } catch (error) {
       console.error('Auth check error:', error);
@@ -32,20 +42,13 @@ export default function Index() {
   const handlePanicButton = () => {
     Alert.alert(
       '🚨 PANIC MODE',
-      'Activating panic mode will:\n\n• Enable GPS tracking\n• Put phone to sleep\n• Hide app when unlocked\n• Send location to authorities\n\nAre you in danger?',
+      'Activating panic mode will:\n\n• Enable GPS tracking\n• Alert nearby security agencies\n• Run discreetly in background\n\nAre you in danger?',
       [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-          onPress: () => setShowPanicPrompt(false)
-        },
+        { text: 'Cancel', style: 'cancel' },
         {
           text: 'ACTIVATE',
           style: 'destructive',
-          onPress: () => {
-            // Navigate to panic mode
-            router.push('/panic/active');
-          }
+          onPress: () => router.push('/civil/panic-active')
         }
       ]
     );
@@ -53,8 +56,7 @@ export default function Index() {
 
   const handleDecline = () => {
     setShowPanicPrompt(false);
-    // Navigate to main app
-    router.replace('/home');
+    router.replace('/civil/home');
   };
 
   if (loading) {
@@ -65,7 +67,7 @@ export default function Index() {
     );
   }
 
-  if (showPanicPrompt) {
+  if (showPanicPrompt && userRole === 'civil') {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
@@ -77,11 +79,7 @@ export default function Index() {
         <View style={styles.panicSection}>
           <Text style={styles.emergencyText}>Emergency Situation?</Text>
           
-          <TouchableOpacity
-            style={styles.panicButton}
-            onPress={handlePanicButton}
-            activeOpacity={0.8}
-          >
+          <TouchableOpacity style={styles.panicButton} onPress={handlePanicButton} activeOpacity={0.8}>
             <Ionicons name="alert-circle" size={80} color="#fff" />
             <Text style={styles.panicButtonText}>PANIC</Text>
             <Text style={styles.panicSubtext}>Tap for Emergency</Text>
@@ -89,17 +87,14 @@ export default function Index() {
 
           <Text style={styles.orText}>or</Text>
 
-          <TouchableOpacity
-            style={styles.declineButton}
-            onPress={handleDecline}
-          >
+          <TouchableOpacity style={styles.declineButton} onPress={handleDecline}>
             <Text style={styles.declineText}>I'm Safe - Enter App</Text>
           </TouchableOpacity>
         </View>
 
         <View style={styles.footer}>
           <Text style={styles.footerText}>
-            In panic mode, your location will be tracked and sent to authorities
+            In panic mode, your location will be tracked and sent to nearby security agencies
           </Text>
         </View>
       </SafeAreaView>
@@ -110,87 +105,18 @@ export default function Index() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0F172A',
-  },
-  header: {
-    alignItems: 'center',
-    paddingVertical: 40,
-  },
-  appName: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginTop: 16,
-  },
-  tagline: {
-    fontSize: 16,
-    color: '#94A3B8',
-    marginTop: 8,
-  },
-  panicSection: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  emergencyText: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#fff',
-    marginBottom: 40,
-  },
-  panicButton: {
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    backgroundColor: '#EF4444',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#EF4444',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.5,
-    shadowRadius: 20,
-    elevation: 10,
-  },
-  panicButtonText: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginTop: 8,
-  },
-  panicSubtext: {
-    fontSize: 14,
-    color: '#FEE2E2',
-    marginTop: 4,
-  },
-  orText: {
-    fontSize: 18,
-    color: '#64748B',
-    marginVertical: 32,
-  },
-  declineButton: {
-    paddingHorizontal: 40,
-    paddingVertical: 16,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#3B82F6',
-  },
-  declineText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#3B82F6',
-  },
-  footer: {
-    paddingHorizontal: 32,
-    paddingBottom: 24,
-    alignItems: 'center',
-  },
-  footerText: {
-    fontSize: 12,
-    color: '#64748B',
-    textAlign: 'center',
-    lineHeight: 18,
-  },
+  container: { flex: 1, backgroundColor: '#0F172A' },
+  header: { alignItems: 'center', paddingVertical: 40 },
+  appName: { fontSize: 32, fontWeight: 'bold', color: '#fff', marginTop: 16 },
+  tagline: { fontSize: 16, color: '#94A3B8', marginTop: 8 },
+  panicSection: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
+  emergencyText: { fontSize: 24, fontWeight: '600', color: '#fff', marginBottom: 40 },
+  panicButton: { width: 220, height: 220, borderRadius: 110, backgroundColor: '#EF4444', justifyContent: 'center', alignItems: 'center', shadowColor: '#EF4444', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.5, shadowRadius: 20, elevation: 10 },
+  panicButtonText: { fontSize: 32, fontWeight: 'bold', color: '#fff', marginTop: 8 },
+  panicSubtext: { fontSize: 14, color: '#FEE2E2', marginTop: 4 },
+  orText: { fontSize: 18, color: '#64748B', marginVertical: 32 },
+  declineButton: { paddingHorizontal: 40, paddingVertical: 16, borderRadius: 12, borderWidth: 2, borderColor: '#3B82F6' },
+  declineText: { fontSize: 18, fontWeight: '600', color: '#3B82F6' },
+  footer: { paddingHorizontal: 32, paddingBottom: 24, alignItems: 'center' },
+  footerText: { fontSize: 12, color: '#64748B', textAlign: 'center', lineHeight: 18 },
 });
