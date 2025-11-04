@@ -1,0 +1,107 @@
+<analysis>
+The AI engineer successfully guided the user through the initial application development, from initial concept to a foundational build. The trajectory reveals an iterative process involving detailed requirement gathering, architectural decisions, and phased implementation. A significant pivot occurred when the user requested a complete rebuild with a two-tier user system (Civil and Security) and Firebase backend, which was adapted to the existing Expo/React Native, FastAPI, MongoDB stack due to platform limitations.
+
+The engineer meticulously created and updated numerous frontend screens and backend API endpoints to support authentication, role-based access control, location services, and media reporting. Multiple bug fixes were addressed, including issues with the premium page scrolling, app not loading on Expo Go due to missing layout files, and  compatibility. The current challenge involves rectifying issues with video recording stopping and a role-based access control error preventing audio report uploads for civil users. The engineer is also expected to provide guidance on building an APK.
+</analysis>
+
+<product_requirements>
+The user aims to develop a cross-platform mobile security app named SafeGuard with two distinct user classes: Civil Users and Security Users.
+
+**Core Features (Initial Request & Enhancements):**
+*   **Anonymity & Customization (All Users):** Dynamic app name and logo customization chosen from 100 random logos.
+*   **Panic Button (Civil Basic):** A prominent red button on app launch. Clicking it initiates discreet background GPS tracking (30-second intervals), sends alerts to nearby security users (via FCM, mocked), and simulates screen sleep/lock, making the app hidden from recent apps.
+*   **Security Escort (Civil Premium):** Activated by a toggle, it starts background GPS tracking (30-second intervals), uploading data to Firestore (mocked to MongoDB with historical subcollections). Clicking ARRIVED stops tracking, and data is auto-deleted after 24 hours.
+*   **Live Reports (Civil Basic):** Users can record live video (max 5 min, no gallery upload) or audio messages. These are compressed and uploaded to Firebase Storage (mocked to FastAPI/MongoDB for metadata, local storage for actual files). Offline functionality involves local saving with thumbnails (yellow for pending, green for uploaded). Reports include caption/description and an anonymous option. Nearby security users are automatically notified.
+*   **Security Dashboard (Security Users Only):**
+    *   **Set Team Location:** Ability to set a team's geographical location using a map pin.
+    *   **Nearby Reports:** Real-time map/list display of civil reports (video/audio) within a configurable radius (e.g., 5-50km) of the team location, using geo-queries (geohashes).
+    *   **Search & Track:** Search for civil users by phone number or email to view their live and historical tracking data on a map.
+    *   **Push Alerts:** Notifications for new panics or reports within the configured radius.
+
+**Authentication & Monetization:**
+*   **Civil Users:** Google Sign-In or Email/Password registration with email verification.
+*   **Security Users:** Email/Password registration with an invite code (admin-approved via Cloud Function, mocked for now). Role-Based Access Control (RBAC) via JWT custom claims (mocked) to differentiate user permissions.
+*   **Monetization (Civil Only):** Basic features are free. Premium access for Security Escort is a paid subscription (Paystack, mocked ₦2,000/month, 7-day trial).
+
+**Technical & UI/UX Guidelines:**
+*   **Tech Stack:** Expo (React Native), FastAPI, MongoDB. Firebase Storage for media files (video/audio).
+*   **Discreetness:** Civil UI is anonymous/discreet, hiding icons post-setup.
+*   **UI/UX:** Dark theme, minimalist design, thumb-friendly, gesture-driven interfaces.
+*   **Compliance:** Encrypt data, auto-delete tracks, consent screens.
+</product_requirements>
+
+<key_technical_concepts>
+-   **Expo/React Native:** Frontend framework for cross-platform mobile development.
+-   **FastAPI:** Python backend framework for REST APIs and logic.
+-   **MongoDB:** NoSQL database for structured data, user profiles, report metadata, and geospatial queries.
+-   **Firebase Storage:** (Mocked to FastAPI/MongoDB) Intended for large media file storage.
+-   **JWT & RBAC:** JSON Web Tokens for authentication and Role-Based Access Control for user permissions.
+-   **Expo-Location & Expo-Task-Manager:** For background GPS tracking.
+-   **Geo-queries & Geohashes:** For efficient location-based filtering (e.g., nearby reports).
+-   **Paystack Integration (Mocked):** Payment gateway for premium upgrades.
+-   **AsyncStorage:** Local storage for offline queues and client-side data persistence.
+-   **Expo-Router:** File-based routing for navigation.
+</key_technical_concepts>
+
+<code_architecture>
+The application follows a full-stack architecture comprising an Expo (React Native) frontend, a FastAPI backend, and a MongoDB database. Large media storage (video/audio) is conceptually Firebase Storage but currently mocked through FastAPI/MongoDB.
+
+**Directory Structure:**
+
+
+**Key Files and Their Importance/Changes:**
+
+*   **/app/backend/server.py:**
+    *   **Importance:** FastAPI backend, handles user authentication (registration, login), role management (Civil/Security), report submission, GPS tracking data storage, and geo-queries. Interacts with MongoDB.
+    *   **Changes:** Rewritten multiple times. Initially, basic auth and report endpoints. Later, refactored to support RBAC with JWT, two user classes, geospatial indexing for reports and tracks, and endpoints for security user features like setting team location and searching/tracking civil users. Includes mock implementations for Firebase Storage, Paystack, and FCM.
+*   **/app/frontend/app/index.tsx:**
+    *   **Importance:** Main entry point and initial screen of the Expo app. Handles initial authentication checks and redirects based on login status/user role.
+    *   **Changes:** Initially contained the entire app logic. Later refactored to be a simple entry point for Expo Router, handling initial loading and authentication state, with error display.
+*   **/app/frontend/app/_layout.tsx:**
+    *   **Importance:** Essential for Expo Router to define the global navigation stack and layout for the application on mobile.
+    *   **Changes:** Newly created to resolve the white screen issue on Expo Go, providing the necessary  navigation setup within .
+*   **/app/frontend/app/auth/login.tsx & /app/frontend/app/auth/register.tsx:**
+    *   **Importance:** Handle user sign-up and login processes, including email/password and (mocked) Google authentication.
+    *   **Changes:** Created to separate authentication flows.  was created to allow new users to create accounts.
+*   **/app/frontend/app/civil/home.tsx:**
+    *   **Importance:** The main dashboard for Civil Users, showing options like Panic Button, Security Escort, and Live Reports.
+    *   **Changes:** Created as part of the two-tier user system implementation, focusing on Civil User features.
+*   **/app/frontend/app/civil/panic-active.tsx:**
+    *   **Importance:** Screen displayed when the Panic Button is activated, indicating ongoing emergency tracking.
+    *   **Changes:** Created to provide visual feedback during panic mode.
+*   **/app/frontend/app/civil/escort.tsx:**
+    *   **Importance:** Screen for Civil Users to manage Security Escort, including starting/stopping tracking.
+    *   **Changes:** Created for the premium Security Escort feature.
+*   **/app/frontend/app/report/index.tsx (Video) & /app/frontend/app/report/audio.tsx:**
+    *   **Importance:** Screens for Civil Users to record and upload live video and audio reports, respectively. Handle camera/microphone access, recording, captioning, and submission.
+    *   **Changes:** Created and then modified to include latitude/longitude in the API calls for report submission. Further modifications are needed to fix video recording stop and audio upload role validation issues.
+*   **/app/frontend/app/premium.tsx:**
+    *   **Importance:** Displays premium features and allows Civil Users to upgrade (via mocked Paystack).
+    *   **Changes:** Created, then extensively modified to fix scrolling issues (added ), corrected syntax errors that made the app non-functional, and updated styles.
+*   **/app/frontend/app/security/home.tsx & /app/frontend/app/security/set-location.tsx:**
+    *   **Importance:**  is the dashboard for Security Users.  allows Security Users to define their team's operational area.
+    *   **Changes:**  was created.  was created and then heavily modified to handle  incompatibility on web by conditionally rendering a placeholder and adjusting associated styles.
+*   **/app/frontend/package.json & /app/backend/requirements.txt:**
+    *   **Importance:** Manage frontend (JavaScript/React Native) and backend (Python) dependencies.
+    *   **Changes:** Updated multiple times to add packages like , , , ,  for frontend, and , ,  for backend.
+</code_architecture>
+
+<pending_tasks>
+-   Fix the video recording functionality to correctly stop recording without failure.
+-   Resolve the only civil users are allowed to upload voice error for audio reports when logged in as a civil user, indicating an RBAC or login state issue.
+-   Provide guidance on how to download the app as an APK for direct phone testing.
+</pending_tasks>
+
+<current_work>
+Immediately before this summary request, the AI engineer was addressing critical user-reported issues concerning the Live Report (video) and Audio Report features on the Expo Go app.
+
+The user reported:
+1.  **Live Report Issue:** While the camera now opens and recording starts (showing Recording), clicking the record button again to stop results in a video recording failed warning.
+2.  **Audio Report Issue:** Audio recording works, but attempting to upload triggers an error message: only civil users are allowed to upload voice, despite the user being logged in with a civil account ().
+
+The AI engineer's most recent action (Chat Message 233) was to acknowledge these two specific issues and initiate an investigation, stating: Let me check and fix the login first to ensure roles are saved correctly. This indicates that the AI engineer suspects the root cause for the audio report error lies in incorrect user role assignment or retrieval, which could also indirectly impact other features.
+</current_work>
+
+<optional_next_step>
+Investigate and fix the user role assignment and retrieval logic to resolve the audio report upload error.
+</optional_next_step>
