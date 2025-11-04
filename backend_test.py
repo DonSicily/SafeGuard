@@ -113,10 +113,10 @@ class SafeGuardAPITester:
         
         # Register security user with valid invite code
         security_data = {
-            "email": "security.team@safeguard.com",
+            "email": f"security.team.{timestamp}@safeguard.com",
             "password": "SecurePass123!",
             "confirm_password": "SecurePass123!",
-            "phone": "+1987654321",
+            "phone": f"+198765{timestamp % 10000}",
             "role": "security",
             "invite_code": "SECURITY2025"
         }
