@@ -71,7 +71,7 @@ class SafeGuardAPITester:
         # Register civil user with unique email
         import time
         timestamp = int(time.time())
-        civil_data = {
+        self.civil_data = {
             "email": f"civil.user.{timestamp}@safeguard.com",
             "password": "SecurePass123!",
             "confirm_password": "SecurePass123!",
@@ -79,7 +79,7 @@ class SafeGuardAPITester:
             "role": "civil"
         }
         
-        success, response = self.make_request('POST', '/auth/register', civil_data, expect_status=200)
+        success, response = self.make_request('POST', '/auth/register', self.civil_data, expect_status=200)
         if success:
             self.civil_token = response.get('token')
             self.civil_user_id = response.get('user_id')
@@ -90,7 +90,7 @@ class SafeGuardAPITester:
             
         # Test civil user login
         login_data = {
-            "email": civil_data["email"],
+            "email": self.civil_data["email"],
             "password": "SecurePass123!"
         }
         
