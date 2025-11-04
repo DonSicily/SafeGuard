@@ -24,595 +24,504 @@ class SafeGuardAPITester:
         self.security_user_id = None
         self.test_results = []
         
-    def log_test(self, test_name: str, success: bool, details: str = "", response_data: Any = None):
+    def log_test(self, test_name, success, details=""):
         """Log test results"""
-        result = {
-            'test': test_name,
-            'success': success,
-            'details': details,
-            'timestamp': datetime.now().isoformat(),
-            'response_data': response_data
-        }
-        self.test_results.append(result)
         status = "✅ PASS" if success else "❌ FAIL"
         print(f"{status}: {test_name}")
         if details:
             print(f"   Details: {details}")
-        if not success and response_data:
-            print(f"   Response: {response_data}")
-        print()
-
-    def make_request(self, method: str, endpoint: str, data: Dict = None, headers: Dict = None, auth_required: bool = False) -> requests.Response:
-        """Make HTTP request with optional authentication"""
-        url = f"{self.api_url}{endpoint}"
-        request_headers = headers or {}
+        self.test_results.append({
+            'test': test_name,
+            'success': success,
+            'details': details
+        })
         
-        if auth_required and self.auth_token:
-            request_headers['Authorization'] = f'Bearer {self.auth_token}'
+    def make_request(self, method, endpoint, data=None, token=None, expect_status=200):
+        """Make HTTP request with proper headers"""
+        url = f"{API_BASE}{endpoint}"
+        headers = {'Content-Type': 'application/json'}
         
+        if token:
+            headers['Authorization'] = f'Bearer {token}'
+            
         try:
-            if method.upper() == 'GET':
-                response = self.session.get(url, headers=request_headers)
-            elif method.upper() == 'POST':
-                request_headers['Content-Type'] = 'application/json'
-                response = self.session.post(url, json=data, headers=request_headers)
-            elif method.upper() == 'PUT':
-                request_headers['Content-Type'] = 'application/json'
-                response = self.session.put(url, json=data, headers=request_headers)
+            if method == 'GET':
+                response = requests.get(url, headers=headers)
+            elif method == 'POST':
+                response = requests.post(url, json=data, headers=headers)
+            elif method == 'PUT':
+                response = requests.put(url, json=data, headers=headers)
             else:
                 raise ValueError(f"Unsupported method: {method}")
+                
+            if response.status_code != expect_status:
+                return False, f"Expected {expect_status}, got {response.status_code}: {response.text}"
+                
+            return True, response.json() if response.content else {}
             
-            return response
         except Exception as e:
-            print(f"Request failed: {e}")
-            raise
-
-    # ===== AUTHENTICATION TESTS =====
+            return False, f"Request failed: {str(e)}"
     
-    def test_user_registration(self):
-        """Test user registration endpoint"""
-        test_email = "sarah.connor@safeguard.com"
-        test_password = "TerminatorHunter2025!"
+    def test_civil_user_registration(self):
+        """Test Civil User Registration & Login"""
+        print("\n=== 1. CIVIL USER AUTHENTICATION ===")
         
-        data = {
-            "email": test_email,
-            "password": test_password,
-            "confirm_password": test_password
+        # Register civil user
+        civil_data = {
+            "email": "civil.user@safeguard.com",
+            "password": "SecurePass123!",
+            "confirm_password": "SecurePass123!",
+            "phone": "+1234567890",
+            "role": "civil"
         }
         
-        try:
-            response = self.make_request('POST', '/auth/register', data)
+        success, response = self.make_request('POST', '/auth/register', civil_data, expect_status=200)
+        if success:
+            self.civil_token = response.get('token')
+            self.civil_user_id = response.get('user_id')
+            self.log_test("Civil User Registration", True, f"User ID: {self.civil_user_id}")
+        else:
+            self.log_test("Civil User Registration", False, response)
+            return False
             
-            if response.status_code == 200:
-                response_data = response.json()
-                if 'token' in response_data and 'user_id' in response_data:
-                    self.auth_token = response_data['token']
-                    self.user_id = response_data['user_id']
-                    self.log_test("User Registration", True, f"User registered successfully with email: {test_email}")
-                    return True
-                else:
-                    self.log_test("User Registration", False, "Missing token or user_id in response", response_data)
-            else:
-                self.log_test("User Registration", False, f"HTTP {response.status_code}", response.json())
-        except Exception as e:
-            self.log_test("User Registration", False, f"Exception: {str(e)}")
-        
-        return False
-
-    def test_user_login(self):
-        """Test user login endpoint"""
-        test_email = "sarah.connor@safeguard.com"
-        test_password = "TerminatorHunter2025!"
-        
-        data = {
-            "email": test_email,
-            "password": test_password
+        # Test civil user login
+        login_data = {
+            "email": "civil.user@safeguard.com",
+            "password": "SecurePass123!"
         }
         
-        try:
-            response = self.make_request('POST', '/auth/login', data)
+        success, response = self.make_request('POST', '/auth/login', login_data, expect_status=200)
+        if success and response.get('token'):
+            self.log_test("Civil User Login", True, f"Role: {response.get('role')}")
+        else:
+            self.log_test("Civil User Login", False, response)
             
-            if response.status_code == 200:
-                response_data = response.json()
-                if 'token' in response_data:
-                    self.auth_token = response_data['token']
-                    self.user_id = response_data['user_id']
-                    self.log_test("User Login", True, f"Login successful for: {test_email}")
-                    return True
-                else:
-                    self.log_test("User Login", False, "Missing token in response", response_data)
-            else:
-                self.log_test("User Login", False, f"HTTP {response.status_code}", response.json())
-        except Exception as e:
-            self.log_test("User Login", False, f"Exception: {str(e)}")
-        
-        return False
-
-    def test_google_auth(self):
-        """Test Google OAuth authentication (mock data)"""
-        data = {
-            "google_id": "google_12345678901234567890",
-            "email": "john.reese@safeguard.com",
-            "name": "John Reese"
-        }
-        
-        try:
-            response = self.make_request('POST', '/auth/google', data)
+        # Get civil profile
+        success, response = self.make_request('GET', '/user/profile', token=self.civil_token)
+        if success and response.get('role') == 'civil':
+            self.log_test("Civil Profile Retrieval", True, f"Email: {response.get('email')}")
+        else:
+            self.log_test("Civil Profile Retrieval", False, response)
             
-            if response.status_code == 200:
-                response_data = response.json()
-                if 'token' in response_data:
-                    self.log_test("Google OAuth", True, f"Google auth successful for: {data['email']}")
-                    return True
-                else:
-                    self.log_test("Google OAuth", False, "Missing token in response", response_data)
-            else:
-                self.log_test("Google OAuth", False, f"HTTP {response.status_code}", response.json())
-        except Exception as e:
-            self.log_test("Google OAuth", False, f"Exception: {str(e)}")
-        
-        return False
-
-    def test_get_user_profile(self):
-        """Test getting user profile (requires authentication)"""
-        try:
-            response = self.make_request('GET', '/user/profile', auth_required=True)
-            
-            if response.status_code == 200:
-                response_data = response.json()
-                required_fields = ['id', 'email', 'is_premium', 'is_verified', 'app_name', 'app_logo']
-                if all(field in response_data for field in required_fields):
-                    self.log_test("Get User Profile", True, f"Profile retrieved for user: {response_data.get('email')}")
-                    return True
-                else:
-                    missing_fields = [f for f in required_fields if f not in response_data]
-                    self.log_test("Get User Profile", False, f"Missing fields: {missing_fields}", response_data)
-            else:
-                self.log_test("Get User Profile", False, f"HTTP {response.status_code}", response.json())
-        except Exception as e:
-            self.log_test("Get User Profile", False, f"Exception: {str(e)}")
-        
-        return False
-
-    def test_customize_app(self):
-        """Test app customization endpoint"""
-        data = {
-            "app_name": "MySecurityApp",
-            "app_logo": "custom_shield"
-        }
-        
-        try:
-            response = self.make_request('PUT', '/user/customize-app', data, auth_required=True)
-            
-            if response.status_code == 200:
-                self.log_test("App Customization", True, f"App customized: {data['app_name']}")
-                return True
-            else:
-                self.log_test("App Customization", False, f"HTTP {response.status_code}", response.json())
-        except Exception as e:
-            self.log_test("App Customization", False, f"Exception: {str(e)}")
-        
-        return False
-
-    def test_protected_endpoint_without_auth(self):
-        """Test that protected endpoints fail without authentication"""
-        # Temporarily clear auth token
-        temp_token = self.auth_token
-        self.auth_token = None
-        
-        try:
-            response = self.make_request('GET', '/user/profile', auth_required=False)
-            
-            if response.status_code == 401:
-                self.log_test("Protected Endpoint Security", True, "Correctly rejected unauthenticated request")
-                success = True
-            else:
-                self.log_test("Protected Endpoint Security", False, f"Expected 401, got {response.status_code}")
-                success = False
-        except Exception as e:
-            self.log_test("Protected Endpoint Security", False, f"Exception: {str(e)}")
-            success = False
-        finally:
-            # Restore auth token
-            self.auth_token = temp_token
-        
-        return success
-
-    # ===== PANIC BUTTON TESTS =====
+        return True
     
-    def test_panic_activation(self):
-        """Test panic button activation"""
-        data = {"activated": True}
+    def test_security_user_registration(self):
+        """Test Security User Registration & Login"""
+        print("\n=== 2. SECURITY USER AUTHENTICATION ===")
         
-        try:
-            response = self.make_request('POST', '/panic/activate', data, auth_required=True)
+        # Register security user with valid invite code
+        security_data = {
+            "email": "security.team@safeguard.com",
+            "password": "SecurePass123!",
+            "confirm_password": "SecurePass123!",
+            "phone": "+1987654321",
+            "role": "security",
+            "invite_code": "SECURITY2025"
+        }
+        
+        success, response = self.make_request('POST', '/auth/register', security_data, expect_status=200)
+        if success:
+            self.security_token = response.get('token')
+            self.security_user_id = response.get('user_id')
+            self.log_test("Security User Registration", True, f"User ID: {self.security_user_id}")
+        else:
+            self.log_test("Security User Registration", False, response)
+            return False
             
-            if response.status_code == 200:
-                response_data = response.json()
-                if 'panic_id' in response_data:
-                    self.panic_id = response_data['panic_id']
-                    self.log_test("Panic Activation", True, f"Panic activated with ID: {self.panic_id}")
-                    return True
-                else:
-                    self.log_test("Panic Activation", False, "Missing panic_id in response", response_data)
-            else:
-                self.log_test("Panic Activation", False, f"HTTP {response.status_code}", response.json())
-        except Exception as e:
-            self.log_test("Panic Activation", False, f"Exception: {str(e)}")
+        # Test security user login
+        login_data = {
+            "email": "security.team@safeguard.com",
+            "password": "SecurePass123!"
+        }
         
-        return False
-
-    def test_panic_location_logging(self):
-        """Test logging GPS location during panic"""
-        data = {
+        success, response = self.make_request('POST', '/auth/login', login_data, expect_status=200)
+        if success and response.get('role') == 'security':
+            self.log_test("Security User Login", True, f"Role: {response.get('role')}")
+        else:
+            self.log_test("Security User Login", False, response)
+            
+        # Get security profile
+        success, response = self.make_request('GET', '/user/profile', token=self.security_token)
+        if success and response.get('role') == 'security':
+            self.log_test("Security Profile Retrieval", True, f"Email: {response.get('email')}")
+        else:
+            self.log_test("Security Profile Retrieval", False, response)
+            
+        return True
+    
+    def test_invalid_security_registration(self):
+        """Test Invalid Security Registration (without invite code)"""
+        print("\n=== 3. INVALID SECURITY REGISTRATION ===")
+        
+        invalid_security_data = {
+            "email": "invalid.security@safeguard.com",
+            "password": "SecurePass123!",
+            "confirm_password": "SecurePass123!",
+            "role": "security"
+            # Missing invite_code
+        }
+        
+        success, response = self.make_request('POST', '/auth/register', invalid_security_data, expect_status=403)
+        if not success and "Invalid security invite code" in str(response):
+            self.log_test("Invalid Security Registration Block", True, "Correctly blocked without invite code")
+        else:
+            self.log_test("Invalid Security Registration Block", False, "Should have been blocked")
+    
+    def test_civil_user_features(self):
+        """Test Civil User Features"""
+        print("\n=== 4. CIVIL USER FEATURES ===")
+        
+        # Test Panic Button Activation
+        panic_data = {
             "latitude": 40.7128,
             "longitude": -74.0060,
             "accuracy": 5.0,
             "timestamp": datetime.utcnow().isoformat()
         }
         
-        try:
-            response = self.make_request('POST', '/panic/location', data, auth_required=True)
+        success, response = self.make_request('POST', '/panic/activate', panic_data, token=self.civil_token)
+        if success and response.get('panic_id'):
+            panic_id = response.get('panic_id')
+            self.log_test("Panic Button Activation", True, f"Panic ID: {panic_id}")
             
-            if response.status_code == 200:
-                self.log_test("Panic Location Logging", True, f"Location logged: {data['latitude']}, {data['longitude']}")
-                return True
-            else:
-                self.log_test("Panic Location Logging", False, f"HTTP {response.status_code}", response.json())
-        except Exception as e:
-            self.log_test("Panic Location Logging", False, f"Exception: {str(e)}")
-        
-        return False
-
-    def test_panic_deactivation(self):
-        """Test panic button deactivation"""
-        try:
-            response = self.make_request('POST', '/panic/deactivate', auth_required=True)
+            # Test Panic Location Logging
+            location_data = {
+                "latitude": 40.7130,
+                "longitude": -74.0062,
+                "accuracy": 3.0,
+                "timestamp": datetime.utcnow().isoformat()
+            }
             
-            if response.status_code == 200:
-                self.log_test("Panic Deactivation", True, "Panic mode deactivated successfully")
-                return True
+            success, response = self.make_request('POST', '/panic/location', location_data, token=self.civil_token)
+            if success:
+                self.log_test("Panic Location Logging", True, "Location updated successfully")
             else:
-                self.log_test("Panic Deactivation", False, f"HTTP {response.status_code}", response.json())
-        except Exception as e:
-            self.log_test("Panic Deactivation", False, f"Exception: {str(e)}")
+                self.log_test("Panic Location Logging", False, response)
+                
+            # Test Panic Deactivation
+            success, response = self.make_request('POST', '/panic/deactivate', token=self.civil_token)
+            if success:
+                self.log_test("Panic Deactivation", True, "Panic deactivated successfully")
+            else:
+                self.log_test("Panic Deactivation", False, response)
+        else:
+            self.log_test("Panic Button Activation", False, response)
         
-        return False
-
-    # ===== ESCORT TESTS =====
+        # Test App Customization
+        custom_data = {
+            "app_name": "MyGuard Pro",
+            "app_logo": "custom_shield"
+        }
+        
+        success, response = self.make_request('PUT', '/user/customize-app', custom_data, token=self.civil_token)
+        if success:
+            self.log_test("App Customization", True, "App customized successfully")
+            
+            # Verify changes in profile
+            success, profile = self.make_request('GET', '/user/profile', token=self.civil_token)
+            if success and profile.get('app_name') == 'MyGuard Pro':
+                self.log_test("App Customization Verification", True, "Changes reflected in profile")
+            else:
+                self.log_test("App Customization Verification", False, "Changes not reflected")
+        else:
+            self.log_test("App Customization", False, response)
+        
+        # Test Video Report Creation
+        video_report = {
+            "type": "video",
+            "caption": "Suspicious activity near park entrance",
+            "is_anonymous": False,
+            "latitude": 40.7128,
+            "longitude": -74.0060,
+            "file_url": "https://example.com/video.mp4",
+            "thumbnail": "https://example.com/thumb.jpg",
+            "uploaded": True
+        }
+        
+        success, response = self.make_request('POST', '/report/create', video_report, token=self.civil_token)
+        if success and response.get('report_id'):
+            self.log_test("Video Report Creation", True, f"Report ID: {response.get('report_id')}")
+        else:
+            self.log_test("Video Report Creation", False, response)
+            
+        # Test Audio Report Creation
+        audio_report = {
+            "type": "audio",
+            "caption": "Heard suspicious conversation",
+            "is_anonymous": True,
+            "latitude": 40.7130,
+            "longitude": -74.0062,
+            "file_url": "https://example.com/audio.mp3",
+            "uploaded": True
+        }
+        
+        success, response = self.make_request('POST', '/report/create', audio_report, token=self.civil_token)
+        if success and response.get('report_id'):
+            self.log_test("Audio Report Creation", True, f"Anonymous report created")
+        else:
+            self.log_test("Audio Report Creation", False, response)
+            
+        # Test Get My Reports
+        success, response = self.make_request('GET', '/report/my-reports', token=self.civil_token)
+        if success and isinstance(response, list) and len(response) >= 2:
+            self.log_test("User Reports Retrieval", True, f"Retrieved {len(response)} reports")
+        else:
+            self.log_test("User Reports Retrieval", False, response)
     
-    def test_escort_non_premium_user(self):
-        """Test escort feature for non-premium user (should fail)"""
-        data = {"action": "start"}
+    def test_escort_premium_features(self):
+        """Test Security Escort Premium Features"""
+        print("\n=== 5. ESCORT PREMIUM FEATURES ===")
         
-        try:
-            response = self.make_request('POST', '/escort/action', data, auth_required=True)
+        # Test Escort Access for Basic User (Should Fail)
+        escort_data = {
+            "action": "start",
+            "location": {
+                "latitude": 40.7128,
+                "longitude": -74.0060,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        }
+        
+        success, response = self.make_request('POST', '/escort/action', escort_data, token=self.civil_token, expect_status=403)
+        if not success and "Premium feature" in str(response):
+            self.log_test("Escort Access Control (Basic User)", True, "Correctly blocked non-premium user")
+        else:
+            self.log_test("Escort Access Control (Basic User)", False, "Should have been blocked")
+        
+        # Test Premium Upgrade via Payment
+        success, response = self.make_request('POST', '/payment/init', 29.99, token=self.civil_token)
+        if success and response.get('reference'):
+            reference = response.get('reference')
+            self.log_test("Payment Initialization", True, f"Reference: {reference}")
             
-            if response.status_code == 403:
-                self.log_test("Escort Non-Premium Access Control", True, "Correctly blocked non-premium user")
-                return True
-            else:
-                self.log_test("Escort Non-Premium Access Control", False, f"Expected 403, got {response.status_code}")
-        except Exception as e:
-            self.log_test("Escort Non-Premium Access Control", False, f"Exception: {str(e)}")
-        
-        return False
-
-    def test_upgrade_to_premium(self):
-        """Upgrade user to premium for escort testing"""
-        # Use payment verification to upgrade to premium
-        mock_reference = "ref_test_premium_upgrade"
-        
-        try:
-            response = self.make_request('GET', f'/payment/verify/{mock_reference}', auth_required=True)
-            
-            if response.status_code == 200:
-                self.log_test("Premium Upgrade", True, "User upgraded to premium successfully")
-                return True
-            else:
-                self.log_test("Premium Upgrade", False, f"HTTP {response.status_code}", response.json())
-        except Exception as e:
-            self.log_test("Premium Upgrade", False, f"Exception: {str(e)}")
-        
-        return False
-
-    def test_escort_start_session(self):
-        """Test starting escort session (premium user)"""
-        data = {"action": "start"}
-        
-        try:
-            response = self.make_request('POST', '/escort/action', data, auth_required=True)
-            
-            if response.status_code == 200:
-                response_data = response.json()
-                if 'session_id' in response_data:
-                    self.escort_session_id = response_data['session_id']
-                    self.log_test("Escort Start Session", True, f"Escort session started: {self.escort_session_id}")
-                    return True
+            # Verify payment (mocked)
+            success, response = self.make_request('GET', f'/payment/verify/{reference}', token=self.civil_token)
+            if success and response.get('status') == 'success':
+                self.log_test("Payment Verification & Premium Upgrade", True, "User upgraded to premium")
+                
+                # Now test escort features for premium user
+                success, response = self.make_request('POST', '/escort/action', escort_data, token=self.civil_token)
+                if success and response.get('session_id'):
+                    session_id = response.get('session_id')
+                    self.log_test("Escort Session Start (Premium User)", True, f"Session ID: {session_id}")
+                    
+                    # Test location logging during escort
+                    location_data = {
+                        "latitude": 40.7130,
+                        "longitude": -74.0062,
+                        "timestamp": datetime.utcnow().isoformat()
+                    }
+                    
+                    success, response = self.make_request('POST', '/escort/location', location_data, token=self.civil_token)
+                    if success:
+                        self.log_test("Escort Location Logging", True, "Location logged during escort")
+                    else:
+                        self.log_test("Escort Location Logging", False, response)
+                    
+                    # Test escort session termination
+                    stop_data = {
+                        "action": "stop",
+                        "location": location_data
+                    }
+                    
+                    success, response = self.make_request('POST', '/escort/action', stop_data, token=self.civil_token)
+                    if success:
+                        self.log_test("Escort Session Termination", True, "Session terminated successfully")
+                    else:
+                        self.log_test("Escort Session Termination", False, response)
                 else:
-                    self.log_test("Escort Start Session", False, "Missing session_id in response", response_data)
+                    self.log_test("Escort Session Start (Premium User)", False, response)
             else:
-                self.log_test("Escort Start Session", False, f"HTTP {response.status_code}", response.json())
-        except Exception as e:
-            self.log_test("Escort Start Session", False, f"Exception: {str(e)}")
+                self.log_test("Payment Verification & Premium Upgrade", False, response)
+        else:
+            self.log_test("Payment Initialization", False, response)
+    
+    def test_security_user_features(self):
+        """Test Security User Features"""
+        print("\n=== 6. SECURITY USER FEATURES ===")
         
-        return False
-
-    def test_escort_location_logging(self):
-        """Test logging GPS location during escort"""
-        data = {
-            "latitude": 40.7589,
-            "longitude": -73.9851,
-            "accuracy": 3.0,
+        # Test Team Location Setup
+        location_data = {
+            "latitude": 40.7128,
+            "longitude": -74.0060,
+            "radius_km": 5.0
+        }
+        
+        success, response = self.make_request('POST', '/security/set-location', location_data, token=self.security_token)
+        if success:
+            self.log_test("Security Team Location Setup", True, "Team location set successfully")
+            
+            # Verify team location
+            success, response = self.make_request('GET', '/security/team-location', token=self.security_token)
+            if success and response.get('latitude') == 40.7128:
+                self.log_test("Team Location Verification", True, f"Radius: {response.get('radius_km')}km")
+            else:
+                self.log_test("Team Location Verification", False, response)
+        else:
+            self.log_test("Security Team Location Setup", False, response)
+        
+        # Test Geospatial Queries - Nearby Reports
+        success, response = self.make_request('GET', '/security/nearby-reports', token=self.security_token)
+        if success and isinstance(response, list):
+            self.log_test("Nearby Reports Query", True, f"Found {len(response)} nearby reports")
+        else:
+            self.log_test("Nearby Reports Query", False, response)
+        
+        # Test Geospatial Queries - Nearby Panics
+        success, response = self.make_request('GET', '/security/nearby-panics', token=self.security_token)
+        if success and isinstance(response, list):
+            self.log_test("Nearby Panics Query", True, f"Found {len(response)} active panics")
+        else:
+            self.log_test("Nearby Panics Query", False, response)
+        
+        # Test User Search by Email
+        search_data = {"search_term": "civil.user@safeguard.com"}
+        success, response = self.make_request('POST', '/security/search-user', search_data, token=self.security_token)
+        if success and response.get('user_id'):
+            user_id = response.get('user_id')
+            self.log_test("User Search by Email", True, f"Found user: {response.get('email')}")
+            
+            # Test User History
+            success, response = self.make_request('GET', f'/security/user-history/{user_id}', token=self.security_token)
+            if success and isinstance(response, list):
+                self.log_test("User History Retrieval", True, f"Found {len(response)} sessions")
+            else:
+                self.log_test("User History Retrieval", False, response)
+        else:
+            self.log_test("User Search by Email", False, response)
+        
+        # Test User Search by Phone
+        search_data = {"search_term": "+1234567890"}
+        success, response = self.make_request('POST', '/security/search-user', search_data, token=self.security_token)
+        if success and response.get('user_id'):
+            self.log_test("User Search by Phone", True, f"Found user: {response.get('phone')}")
+        else:
+            self.log_test("User Search by Phone", False, response)
+    
+    def test_permission_checks(self):
+        """Test Cross-Role Permission Checks"""
+        print("\n=== 7. PERMISSION CHECKS ===")
+        
+        # Security user trying to activate panic (should fail)
+        panic_data = {
+            "latitude": 40.7128,
+            "longitude": -74.0060,
             "timestamp": datetime.utcnow().isoformat()
         }
         
-        try:
-            response = self.make_request('POST', '/escort/location', data, auth_required=True)
-            
-            if response.status_code == 200:
-                self.log_test("Escort Location Logging", True, f"Escort location logged: {data['latitude']}, {data['longitude']}")
-                return True
-            else:
-                self.log_test("Escort Location Logging", False, f"HTTP {response.status_code}", response.json())
-        except Exception as e:
-            self.log_test("Escort Location Logging", False, f"Exception: {str(e)}")
+        success, response = self.make_request('POST', '/panic/activate', panic_data, token=self.security_token, expect_status=403)
+        if not success and "Only civil users can activate panic" in str(response):
+            self.log_test("Security User Panic Block", True, "Correctly blocked security user from panic")
+        else:
+            self.log_test("Security User Panic Block", False, "Should have been blocked")
         
-        return False
-
-    def test_escort_stop_session(self):
-        """Test stopping escort session and deleting data"""
-        data = {"action": "stop"}
-        
-        try:
-            response = self.make_request('POST', '/escort/action', data, auth_required=True)
-            
-            if response.status_code == 200:
-                self.log_test("Escort Stop Session", True, "Escort session stopped and data deleted")
-                return True
-            else:
-                self.log_test("Escort Stop Session", False, f"HTTP {response.status_code}", response.json())
-        except Exception as e:
-            self.log_test("Escort Stop Session", False, f"Exception: {str(e)}")
-        
-        return False
-
-    # ===== REPORT TESTS =====
-    
-    def test_create_video_report(self):
-        """Test creating a video report"""
-        data = {
+        # Security user trying to create report (should fail)
+        report_data = {
             "type": "video",
-            "caption": "Suspicious activity near Central Park",
-            "is_anonymous": False,
-            "file_url": "https://example.com/video123.mp4",
-            "thumbnail": "https://example.com/thumb123.jpg",
-            "uploaded": False
+            "caption": "Test report",
+            "latitude": 40.7128,
+            "longitude": -74.0060
         }
         
-        try:
-            response = self.make_request('POST', '/report/create', data, auth_required=True)
-            
-            if response.status_code == 200:
-                response_data = response.json()
-                if 'report_id' in response_data:
-                    self.video_report_id = response_data['report_id']
-                    self.log_test("Create Video Report", True, f"Video report created: {self.video_report_id}")
-                    return True
-                else:
-                    self.log_test("Create Video Report", False, "Missing report_id in response", response_data)
-            else:
-                self.log_test("Create Video Report", False, f"HTTP {response.status_code}", response.json())
-        except Exception as e:
-            self.log_test("Create Video Report", False, f"Exception: {str(e)}")
+        success, response = self.make_request('POST', '/report/create', report_data, token=self.security_token, expect_status=403)
+        if not success and "Only civil users can create reports" in str(response):
+            self.log_test("Security User Report Block", True, "Correctly blocked security user from reports")
+        else:
+            self.log_test("Security User Report Block", False, "Should have been blocked")
         
-        return False
-
-    def test_create_audio_report(self):
-        """Test creating an audio report"""
-        data = {
-            "type": "audio",
-            "caption": "Emergency call recording",
-            "is_anonymous": True,
-            "file_url": "https://example.com/audio456.mp3",
-            "uploaded": False
-        }
-        
-        try:
-            response = self.make_request('POST', '/report/create', data, auth_required=True)
-            
-            if response.status_code == 200:
-                response_data = response.json()
-                if 'report_id' in response_data:
-                    self.audio_report_id = response_data['report_id']
-                    self.log_test("Create Audio Report", True, f"Audio report created: {self.audio_report_id}")
-                    return True
-                else:
-                    self.log_test("Create Audio Report", False, "Missing report_id in response", response_data)
-            else:
-                self.log_test("Create Audio Report", False, f"HTTP {response.status_code}", response.json())
-        except Exception as e:
-            self.log_test("Create Audio Report", False, f"Exception: {str(e)}")
-        
-        return False
-
-    def test_get_user_reports(self):
-        """Test retrieving user's reports"""
-        try:
-            response = self.make_request('GET', '/report/my-reports', auth_required=True)
-            
-            if response.status_code == 200:
-                reports = response.json()
-                if isinstance(reports, list) and len(reports) >= 2:
-                    self.log_test("Get User Reports", True, f"Retrieved {len(reports)} reports")
-                    return True
-                else:
-                    self.log_test("Get User Reports", False, f"Expected list with 2+ reports, got: {reports}")
-            else:
-                self.log_test("Get User Reports", False, f"HTTP {response.status_code}", response.json())
-        except Exception as e:
-            self.log_test("Get User Reports", False, f"Exception: {str(e)}")
-        
-        return False
-
-    def test_mark_report_uploaded(self):
-        """Test marking a report as uploaded"""
-        if not hasattr(self, 'video_report_id'):
-            self.log_test("Mark Report Uploaded", False, "No video report ID available")
-            return False
-        
-        file_url = "https://cdn.safeguard.com/uploads/video123_final.mp4"
-        
-        try:
-            response = self.make_request('PUT', f'/report/{self.video_report_id}/upload-complete', 
-                                      data=file_url, auth_required=True)
-            
-            if response.status_code == 200:
-                self.log_test("Mark Report Uploaded", True, f"Report {self.video_report_id} marked as uploaded")
-                return True
-            else:
-                self.log_test("Mark Report Uploaded", False, f"HTTP {response.status_code}", response.json())
-        except Exception as e:
-            self.log_test("Mark Report Uploaded", False, f"Exception: {str(e)}")
-        
-        return False
-
-    # ===== PAYMENT TESTS =====
+        # Civil user trying to access security features (should fail)
+        success, response = self.make_request('GET', '/security/nearby-reports', token=self.civil_token, expect_status=403)
+        if not success and "Security users only" in str(response):
+            self.log_test("Civil User Security Block", True, "Correctly blocked civil user from security features")
+        else:
+            self.log_test("Civil User Security Block", False, "Should have been blocked")
     
-    def test_payment_initialization(self):
-        """Test payment initialization (Paystack placeholder)"""
-        data = {
-            "amount": 2999.99,
-            "email": "sarah.connor@safeguard.com"
+    def test_edge_cases(self):
+        """Test Edge Cases and Error Handling"""
+        print("\n=== 8. EDGE CASES ===")
+        
+        # Test invalid coordinates
+        invalid_panic = {
+            "latitude": 999.0,  # Invalid latitude
+            "longitude": -74.0060,
+            "timestamp": datetime.utcnow().isoformat()
         }
         
-        try:
-            response = self.make_request('POST', '/payment/init', data, auth_required=True)
-            
-            if response.status_code == 200:
-                response_data = response.json()
-                required_fields = ['authorization_url', 'reference']
-                if all(field in response_data for field in required_fields):
-                    self.payment_reference = response_data['reference']
-                    self.log_test("Payment Initialization", True, f"Payment initialized: {self.payment_reference}")
-                    return True
-                else:
-                    missing_fields = [f for f in required_fields if f not in response_data]
-                    self.log_test("Payment Initialization", False, f"Missing fields: {missing_fields}", response_data)
-            else:
-                self.log_test("Payment Initialization", False, f"HTTP {response.status_code}", response.json())
-        except Exception as e:
-            self.log_test("Payment Initialization", False, f"Exception: {str(e)}")
+        success, response = self.make_request('POST', '/panic/activate', invalid_panic, token=self.civil_token, expect_status=422)
+        if not success:
+            self.log_test("Invalid Coordinates Handling", True, "Correctly rejected invalid coordinates")
+        else:
+            self.log_test("Invalid Coordinates Handling", False, "Should have rejected invalid coordinates")
         
-        return False
-
-    def test_payment_verification(self):
-        """Test payment verification and premium upgrade"""
-        mock_reference = "ref_test_verification"
+        # Test unauthorized access
+        success, response = self.make_request('GET', '/user/profile', expect_status=401)
+        if not success and "Not authenticated" in str(response):
+            self.log_test("Unauthorized Access Block", True, "Correctly blocked unauthenticated request")
+        else:
+            self.log_test("Unauthorized Access Block", False, "Should have blocked unauthenticated request")
         
-        try:
-            response = self.make_request('GET', f'/payment/verify/{mock_reference}', auth_required=True)
-            
-            if response.status_code == 200:
-                response_data = response.json()
-                if response_data.get('status') == 'success':
-                    self.log_test("Payment Verification", True, "Payment verified and user upgraded to premium")
-                    return True
-                else:
-                    self.log_test("Payment Verification", False, f"Unexpected status: {response_data.get('status')}", response_data)
-            else:
-                self.log_test("Payment Verification", False, f"HTTP {response.status_code}", response.json())
-        except Exception as e:
-            self.log_test("Payment Verification", False, f"Exception: {str(e)}")
+        # Test duplicate registration
+        duplicate_data = {
+            "email": "civil.user@safeguard.com",  # Already registered
+            "password": "NewPass123!",
+            "confirm_password": "NewPass123!",
+            "role": "civil"
+        }
         
-        return False
-
-    # ===== MAIN TEST RUNNER =====
+        success, response = self.make_request('POST', '/auth/register', duplicate_data, expect_status=400)
+        if not success and "Email already registered" in str(response):
+            self.log_test("Duplicate Registration Block", True, "Correctly blocked duplicate email")
+        else:
+            self.log_test("Duplicate Registration Block", False, "Should have blocked duplicate email")
     
     def run_all_tests(self):
-        """Run all backend API tests"""
-        print("🔒 SafeGuard Security Mobile App - Backend API Testing")
-        print("=" * 60)
-        print()
-        
-        # Authentication Tests
-        print("🔐 AUTHENTICATION TESTS")
-        print("-" * 30)
-        self.test_user_registration()
-        self.test_user_login()
-        self.test_google_auth()
-        self.test_get_user_profile()
-        self.test_customize_app()
-        self.test_protected_endpoint_without_auth()
-        
-        # Panic Button Tests
-        print("🚨 PANIC BUTTON TESTS")
-        print("-" * 30)
-        self.test_panic_activation()
-        self.test_panic_location_logging()
-        self.test_panic_deactivation()
-        
-        # Escort Tests
-        print("🛡️ SECURITY ESCORT TESTS")
-        print("-" * 30)
-        self.test_escort_non_premium_user()
-        self.test_upgrade_to_premium()
-        self.test_escort_start_session()
-        self.test_escort_location_logging()
-        self.test_escort_stop_session()
-        
-        # Report Tests
-        print("📹 REPORT TESTS")
-        print("-" * 30)
-        self.test_create_video_report()
-        self.test_create_audio_report()
-        self.test_get_user_reports()
-        self.test_mark_report_uploaded()
-        
-        # Payment Tests
-        print("💳 PAYMENT TESTS")
-        print("-" * 30)
-        self.test_payment_initialization()
-        self.test_payment_verification()
-        
-        # Summary
-        self.print_summary()
-
-    def print_summary(self):
-        """Print test summary"""
-        print("\n" + "=" * 60)
-        print("📊 TEST SUMMARY")
+        """Run complete test suite"""
+        print("🚀 Starting SafeGuard Security App Backend API Tests")
+        print(f"🌐 Testing against: {API_BASE}")
         print("=" * 60)
         
-        passed = sum(1 for result in self.test_results if result['success'])
-        failed = len(self.test_results) - passed
-        
-        print(f"Total Tests: {len(self.test_results)}")
-        print(f"✅ Passed: {passed}")
-        print(f"❌ Failed: {failed}")
-        print(f"Success Rate: {(passed/len(self.test_results)*100):.1f}%")
-        
-        if failed > 0:
-            print("\n🔍 FAILED TESTS:")
-            for result in self.test_results:
-                if not result['success']:
-                    print(f"  ❌ {result['test']}: {result['details']}")
-        
-        print("\n" + "=" * 60)
-
-
-def main():
-    """Main function to run the tests"""
-    # Get backend URL from environment
-    backend_url = "https://guardcam.preview.emergentagent.com"
-    
-    print(f"Testing backend at: {backend_url}")
-    print()
-    
-    # Create tester instance and run tests
-    tester = SafeGuardAPITester(backend_url)
-    tester.run_all_tests()
-
+        try:
+            # Run all test suites
+            self.test_civil_user_registration()
+            self.test_security_user_registration()
+            self.test_invalid_security_registration()
+            self.test_civil_user_features()
+            self.test_escort_premium_features()
+            self.test_security_user_features()
+            self.test_permission_checks()
+            self.test_edge_cases()
+            
+            # Summary
+            print("\n" + "=" * 60)
+            print("📊 TEST SUMMARY")
+            print("=" * 60)
+            
+            passed = sum(1 for result in self.test_results if result['success'])
+            total = len(self.test_results)
+            
+            print(f"✅ Passed: {passed}/{total}")
+            print(f"❌ Failed: {total - passed}/{total}")
+            print(f"📈 Success Rate: {(passed/total)*100:.1f}%")
+            
+            if total - passed > 0:
+                print("\n❌ FAILED TESTS:")
+                for result in self.test_results:
+                    if not result['success']:
+                        print(f"   • {result['test']}: {result['details']}")
+            
+            return passed == total
+            
+        except Exception as e:
+            print(f"\n💥 Test suite failed with error: {str(e)}")
+            return False
 
 if __name__ == "__main__":
-    main()
+    tester = SafeGuardAPITester()
+    success = tester.run_all_tests()
+    
+    if success:
+        print("\n🎉 All tests passed! SafeGuard API is fully functional.")
+    else:
+        print("\n⚠️  Some tests failed. Check the details above.")
+    
+    exit(0 if success else 1)
