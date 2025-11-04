@@ -88,7 +88,7 @@ class SafeGuardAPITester:
             
         # Test civil user login
         login_data = {
-            "email": "civil.user@safeguard.com",
+            "email": civil_data["email"],
             "password": "SecurePass123!"
         }
         
