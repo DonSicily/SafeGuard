@@ -697,25 +697,109 @@ async def get_user_history(user_id: str, user = Depends(get_current_user)):
     
     return result
 
-# ===== PAYMENT ROUTES (MOCKED) =====
+# ===== PAYMENT ROUTES (REAL PAYSTACK) =====
 @api_router.post("/payment/init")
 async def init_payment(amount: float = Body(...), user = Depends(get_current_user)):
-    # TODO: Integrate Paystack
-    reference = f"ref_{uuid.uuid4()}"
-    return {
-        'authorization_url': f'https://paystack.com/pay/{reference}',
-        'reference': reference,
-        'message': 'Paystack integration pending - payment mocked'
-    }
+    """Initialize Paystack payment for premium subscription"""
+    try:
+        # Generate unique reference
+        reference = f"SGD_{uuid.uuid4().hex[:12].upper()}"
+        
+        # Convert amount to kobo (₦2,000 = 200000 kobo)
+        amount_in_kobo = int(amount * 100)
+        
+        # Initialize payment with Paystack
+        result = await paystack_service.initialize_transaction(
+            email=user['email'],
+            amount=amount_in_kobo,
+            reference=reference,
+            callback_url=None  # Can add callback URL for mobile app
+        )
+        
+        if result.get('status'):
+            data = result.get('data', {})
+            
+            # Store payment reference in database
+            await db.payment_transactions.insert_one({
+                'user_id': str(user['_id']),
+                'reference': reference,
+                'amount': amount,
+                'amount_kobo': amount_in_kobo,
+                'status': 'pending',
+                'created_at': datetime.utcnow()
+            })
+            
+            return {
+                'status': True,
+                'authorization_url': data.get('authorization_url'),
+                'access_code': data.get('access_code'),
+                'reference': reference,
+                'message': 'Payment initialized successfully'
+            }
+        else:
+            raise HTTPException(status_code=400, detail="Payment initialization failed")
+            
+    except Exception as e:
+        logging.error(f"Payment init error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/payment/verify/{reference}")
 async def verify_payment(reference: str, user = Depends(get_current_user)):
-    # TODO: Verify with Paystack
-    await db.users.update_one(
-        {'_id': user['_id']},
-        {'$set': {'is_premium': True}}
-    )
-    return {'status': 'success', 'message': 'Premium activated (mocked)'}
+    """Verify Paystack payment and activate premium"""
+    try:
+        # Verify payment with Paystack
+        result = await paystack_service.verify_transaction(reference)
+        
+        if result.get('status'):
+            data = result.get('data', {})
+            
+            if data.get('status') == 'success':
+                # Update user to premium
+                await db.users.update_one(
+                    {'_id': user['_id']},
+                    {'$set': {
+                        'is_premium': True,
+                        'premium_activated_at': datetime.utcnow()
+                    }}
+                )
+                
+                # Update transaction status
+                await db.payment_transactions.update_one(
+                    {'reference': reference},
+                    {'$set': {
+                        'status': 'completed',
+                        'verified_at': datetime.utcnow(),
+                        'paystack_data': data
+                    }}
+                )
+                
+                # Send confirmation email
+                try:
+                    await email_service.send_payment_confirmation(
+                        to_email=user['email'],
+                        amount=data.get('amount', 0) / 100,  # Convert from kobo
+                        reference=reference
+                    )
+                except Exception as e:
+                    logging.error(f"Email send error: {e}")
+                
+                return {
+                    'status': 'success',
+                    'message': 'Premium activated successfully!',
+                    'amount': data.get('amount', 0) / 100,
+                    'paid_at': data.get('paid_at')
+                }
+            else:
+                return {
+                    'status': 'failed',
+                    'message': f"Payment status: {data.get('status')}"
+                }
+        else:
+            raise HTTPException(status_code=400, detail="Payment verification failed")
+            
+    except Exception as e:
+        logging.error(f"Payment verification error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Include router
 app.include_router(api_router)
