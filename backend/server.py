@@ -345,12 +345,31 @@ async def activate_panic(panic_data: LocationPoint, user = Depends(get_current_u
     
     security_user_ids = [team['user_id'] for team in security_teams]
     if security_user_ids:
+        # Send push notifications
         await send_push_notification(
             security_user_ids,
             "🚨 PANIC ALERT",
             f"Panic button activated nearby at {panic_data.latitude:.4f}, {panic_data.longitude:.4f}",
             {'type': 'panic', 'event_id': str(result.inserted_id)}
         )
+        
+        # Send email alerts to security users
+        try:
+            security_users = await db.users.find({
+                '_id': {'$in': [ObjectId(uid) for uid in security_user_ids]}
+            }).to_list(length=None)
+            
+            for sec_user in security_users:
+                if sec_user.get('email'):
+                    await email_service.send_panic_alert_email(
+                        to_email=sec_user['email'],
+                        reporter_name=user.get('email', 'Unknown'),
+                        latitude=panic_data.latitude,
+                        longitude=panic_data.longitude,
+                        timestamp=datetime.utcnow()
+                    )
+        except Exception as e:
+            logging.error(f"Error sending panic emails: {e}")
     
     return {'panic_id': str(result.inserted_id), 'message': 'Panic activated'}
 
