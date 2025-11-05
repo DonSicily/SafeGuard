@@ -716,6 +716,44 @@ async def get_user_history(user_id: str, user = Depends(get_current_user)):
     
     return result
 
+# ===== PUSH TOKEN MANAGEMENT =====
+@api_router.post("/push-token/register")
+async def register_push_token(token: str = Body(...), user = Depends(get_current_user)):
+    """Register Expo push token for user"""
+    try:
+        # Validate token format
+        if not expo_push_service.is_valid_token(token):
+            raise HTTPException(status_code=400, detail="Invalid Expo push token format")
+        
+        # Update user's push token
+        await db.users.update_one(
+            {'_id': user['_id']},
+            {'$set': {
+                'push_token': token,
+                'push_token_updated_at': datetime.utcnow()
+            }}
+        )
+        
+        logging.info(f"Push token registered for user {user['email']}")
+        return {'message': 'Push token registered successfully'}
+        
+    except Exception as e:
+        logging.error(f"Push token registration error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.delete("/push-token/unregister")
+async def unregister_push_token(user = Depends(get_current_user)):
+    """Unregister push token"""
+    try:
+        await db.users.update_one(
+            {'_id': user['_id']},
+            {'$unset': {'push_token': '', 'push_token_updated_at': ''}}
+        )
+        return {'message': 'Push token unregistered successfully'}
+    except Exception as e:
+        logging.error(f"Push token unregister error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ===== PAYMENT ROUTES (REAL PAYSTACK) =====
 @api_router.post("/payment/init")
 async def init_payment(amount: float = Body(...), user = Depends(get_current_user)):
