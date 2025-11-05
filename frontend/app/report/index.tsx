@@ -52,9 +52,11 @@ export default function Report() {
 
     try {
       setIsRecording(true);
+      setRecordingStartTime(Date.now());
       const video = await cameraRef.recordAsync({ maxDuration: 300 });
       // When stopRecording is called, recordAsync resolves with the video
       setIsRecording(false);
+      setRecordingStartTime(null);
       
       if (video && video.uri) {
         setRecordingUri(video.uri);
@@ -63,8 +65,12 @@ export default function Report() {
     } catch (error: any) {
       console.error('Recording error:', error);
       setIsRecording(false);
-      // Only show error if it's not a cancellation
-      if (error.message && !error.message.toLowerCase().includes('cancel') && !error.message.toLowerCase().includes('stop')) {
+      setRecordingStartTime(null);
+      
+      // Check if error is due to stopping too quickly
+      if (error.message && error.message.includes('stopped before any data')) {
+        Alert.alert('Recording Too Short', 'Please record for at least 1-2 seconds before stopping.');
+      } else if (error.message && !error.message.toLowerCase().includes('cancel') && !error.message.toLowerCase().includes('stop')) {
         Alert.alert('Error', `Failed to record: ${error.message}`);
       }
     }
@@ -72,6 +78,14 @@ export default function Report() {
 
   const stopRecording = () => {
     if (cameraRef && isRecording) {
+      // Check minimum recording duration (1 second)
+      if (recordingStartTime) {
+        const recordingDuration = Date.now() - recordingStartTime;
+        if (recordingDuration < 1000) {
+          Alert.alert('Too Quick', 'Please record for at least 1 second before stopping.');
+          return;
+        }
+      }
       cameraRef.stopRecording();
     }
   };
