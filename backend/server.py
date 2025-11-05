@@ -140,12 +140,45 @@ def geohash(lat: float, lon: float, precision: int = 6) -> str:
     """Simple geohash implementation"""
     return hashlib.md5(f"{lat:.{precision}f},{lon:.{precision}f}".encode()).hexdigest()[:precision]
 
-# Mock Push Notification
+# Import services
+from services import (
+    firebase_service,
+    paystack_service,
+    expo_push_service,
+    email_service
+)
+
+# Real Push Notification using Expo
 async def send_push_notification(user_ids: List[str], title: str, body: str, data: dict = None):
-    """Mock push notification - implement with FCM/Expo Push later"""
-    logging.info(f"MOCK PUSH: {title} to {len(user_ids)} users - {body}")
-    # TODO: Implement with Expo Push Notifications
-    return {"status": "mocked", "sent_to": len(user_ids)}
+    """Send push notification using Expo Push Service"""
+    try:
+        # Get push tokens for these users
+        users_with_tokens = await db.users.find({
+            '_id': {'$in': [ObjectId(uid) for uid in user_ids]},
+            'push_token': {'$exists': True, '$ne': None}
+        }).to_list(length=None)
+        
+        tokens = [user.get('push_token') for user in users_with_tokens if user.get('push_token')]
+        
+        if not tokens:
+            logging.info(f"No push tokens found for {len(user_ids)} users")
+            return {"status": "no_tokens", "sent_to": 0}
+        
+        # Send via Expo Push Service
+        result = await expo_push_service.send_push_notification(
+            tokens=tokens,
+            title=title,
+            body=body,
+            data=data or {},
+            priority='high'
+        )
+        
+        logging.info(f"Push notification sent: {result['success']} success, {result['failed']} failed")
+        return {"status": "sent", "sent_to": result['success'], "failed": result['failed']}
+        
+    except Exception as e:
+        logging.error(f"Push notification error: {e}")
+        return {"status": "error", "sent_to": 0, "error": str(e)}
 
 # ===== AUTHENTICATION ROUTES =====
 @api_router.post("/auth/register")
