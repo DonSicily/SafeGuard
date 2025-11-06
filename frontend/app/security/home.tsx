@@ -209,6 +209,8 @@ const styles = StyleSheet.create({
   greeting: { fontSize: 16, color: '#94A3B8' },
   appName: { fontSize: 28, fontWeight: 'bold', color: '#fff', marginTop: 4 },
   settingsButton: { padding: 8 },
+  warningBanner: { backgroundColor: '#FEF3C7', borderRadius: 12, padding: 16, marginBottom: 16, flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderColor: '#F59E0B' },
+  warningText: { flex: 1, fontSize: 14, color: '#92400E', fontWeight: '600' },
   locationCard: { backgroundColor: '#1E293B', borderRadius: 16, padding: 20, marginBottom: 24, borderWidth: 2, borderColor: '#3B82F6' },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 12 },
   cardHeaderText: { flex: 1 },
