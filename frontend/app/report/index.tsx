@@ -207,6 +207,9 @@ export default function Report() {
               <View style={styles.recordingIndicator}>
                 <View style={styles.recordingDot} />
                 <Text style={styles.recordingText}>RECORDING</Text>
+                <Text style={styles.recordingTimer}>
+                  {Math.floor(recordingDuration / 60)}:{(recordingDuration % 60).toString().padStart(2, '0')}
+                </Text>
               </View>
             )}
           </CameraView>
