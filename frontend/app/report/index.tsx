@@ -21,6 +21,8 @@ export default function Report() {
   const [recordingUri, setRecordingUri] = useState<string | null>(null);
   const [location, setLocation] = useState<any>(null);
   const [recordingStartTime, setRecordingStartTime] = useState<number | null>(null);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const recordingPromiseRef = React.useRef<Promise<any> | null>(null);
 
   React.useEffect(() => {
     requestPermissions();
