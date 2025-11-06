@@ -53,8 +53,31 @@ export default function Report() {
       setHasPermission(cameraStatus === 'granted' && micStatus === 'granted');
       
       if (locationStatus === 'granted') {
-        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-        setLocation(loc);
+        try {
+          const loc = await Location.getCurrentPositionAsync({ 
+            accuracy: Location.Accuracy.High,
+            timeInterval: 5000,
+            distanceInterval: 0
+          });
+          setLocation(loc);
+          console.log('Location obtained:', loc.coords.latitude, loc.coords.longitude);
+        } catch (locError: any) {
+          console.error('Location error:', locError);
+          Alert.alert(
+            'Location Service Required',
+            'Please enable Location Services in your device settings.\n\n' +
+            '1. Go to Settings\n' +
+            '2. Enable Location/GPS\n' +
+            '3. Restart the app\n\n' +
+            'Video recording will use default location for now.',
+            [{ text: 'OK' }]
+          );
+          // Use default location as fallback
+          setLocation({ coords: { latitude: 9.0820, longitude: 8.6753 } } as any);
+        }
+      } else {
+        // Use default location if permission denied
+        setLocation({ coords: { latitude: 9.0820, longitude: 8.6753 } } as any);
       }
     } catch (error) {
       console.error('Permission error:', error);
