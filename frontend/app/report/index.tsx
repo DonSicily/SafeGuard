@@ -296,6 +296,7 @@ const styles = StyleSheet.create({
   recordingIndicator: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.7)', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, margin: 20, alignSelf: 'flex-start' },
   recordingDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#EF4444', marginRight: 8 },
   recordingText: { fontSize: 14, fontWeight: '600', color: '#fff' },
+  recordingTimer: { fontSize: 20, fontWeight: 'bold', color: '#fff', marginTop: 4 },
   cameraControls: { position: 'absolute', bottom: 40, left: 0, right: 0, alignItems: 'center' },
   recordButton: { width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(255,255,255,0.3)', justifyContent: 'center', alignItems: 'center' },
   recordButtonInner: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#EF4444' },
