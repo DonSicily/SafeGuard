@@ -91,13 +91,22 @@ export default function SecurityHome() {
         </View>
 
         {/* Team Location Card */}
+        {(!teamLocation || (teamLocation.latitude === 0 && teamLocation.longitude === 0)) && (
+          <View style={styles.warningBanner}>
+            <Ionicons name="warning" size={24} color="#F59E0B" />
+            <Text style={styles.warningText}>
+              ⚠️ Set your team location to see nearby panics and reports!
+            </Text>
+          </View>
+        )}
+        
         <TouchableOpacity style={styles.locationCard} onPress={() => router.push('/security/set-location')}>
           <View style={styles.cardHeader}>
             <Ionicons name="location" size={32} color="#3B82F6" />
             <View style={styles.cardHeaderText}>
               <Text style={styles.cardTitle}>Team Location</Text>
               <Text style={styles.cardSubtitle}>
-                {teamLocation ? `Radius: ${radiusKm}km` : 'Not Set'}
+                {teamLocation && teamLocation.latitude !== 0 ? `Radius: ${radiusKm}km` : '⚠️ Not Set - Click to Set'}
               </Text>
             </View>
           </View>
