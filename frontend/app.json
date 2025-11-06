@@ -1,21 +1,46 @@
 {
   "expo": {
-    "name": "frontend",
-    "slug": "frontend",
+    "name": "SafeGuard",
+    "slug": "safeguard",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "frontend",
-    "userInterfaceStyle": "automatic",
+    "scheme": "safeguard",
+    "userInterfaceStyle": "dark",
     "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0F172A"
+    },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.safeguard.app",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "SafeGuard needs your location to provide emergency services and track your safety during panic alerts and security escort.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "SafeGuard needs continuous location access to track your safety in the background during emergencies and security escort.",
+        "NSLocationAlwaysUsageDescription": "SafeGuard needs background location to monitor your safety even when the app is not active.",
+        "NSCameraUsageDescription": "SafeGuard needs camera access to record live video reports of incidents.",
+        "NSMicrophoneUsageDescription": "SafeGuard needs microphone access to record audio reports."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#000"
+        "backgroundColor": "#0F172A"
       },
+      "package": "com.safeguard.app",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION",
+        "CAMERA",
+        "RECORD_AUDIO",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ],
       "edgeToEdgeEnabled": true
     },
     "web": {
@@ -26,17 +51,52 @@
     "plugins": [
       "expo-router",
       [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "SafeGuard needs your location to provide emergency services and track your safety during panic alerts and security escort.",
+          "locationAlwaysPermission": "SafeGuard needs background location to monitor your safety even when the app is not active.",
+          "locationWhenInUsePermission": "SafeGuard needs your location for emergency tracking and reporting.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "SafeGuard needs camera access to record live video reports of incidents.",
+          "microphonePermission": "SafeGuard needs microphone access to record audio reports.",
+          "recordAudioAndroid": true
+        }
+      ],
+      [
+        "expo-av",
+        {
+          "microphonePermission": "SafeGuard needs microphone access to record audio reports."
+        }
+      ],
+      [
+        "expo-task-manager"
+      ],
+      [
         "expo-splash-screen",
         {
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#000"
+          "backgroundColor": "#0F172A"
         }
       ]
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "your-project-id"
+      }
     }
   }
 }
