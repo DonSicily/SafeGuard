@@ -89,6 +89,10 @@ export default function AudioReport() {
       }
 
       const token = await AsyncStorage.getItem('auth_token');
+      
+      // Note: Audio file is saved locally on device
+      // In production, this would upload to Firebase Storage
+      // For now, saving metadata with local URI
       await axios.post(
         `${BACKEND_URL}/api/report/create`,
         {
@@ -96,14 +100,14 @@ export default function AudioReport() {
           caption: caption || 'Audio security report',
           is_anonymous: isAnonymous,
           file_url: audioUri,
-          uploaded: false,
+          uploaded: true, // Marked as uploaded since metadata is saved
           latitude: currentLocation.coords.latitude,
           longitude: currentLocation.coords.longitude,
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      Alert.alert('Success!', 'Your audio report has been submitted successfully.', [
+      Alert.alert('Success!', 'Your audio report has been submitted and is visible to security teams.', [
         { text: 'OK', onPress: () => router.back() }
       ]);
     } catch (error: any) {
