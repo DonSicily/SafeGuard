@@ -24,6 +24,22 @@ export default function Report() {
   const [recordingDuration, setRecordingDuration] = useState(0);
   const recordingPromiseRef = React.useRef<Promise<any> | null>(null);
 
+  // Timer effect for recording duration display
+  React.useEffect(() => {
+    let interval: any;
+    if (isRecording && recordingStartTime) {
+      interval = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+        setRecordingDuration(elapsed);
+      }, 100); // Update every 100ms for smooth display
+    } else {
+      setRecordingDuration(0);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isRecording, recordingStartTime]);
+
   React.useEffect(() => {
     requestPermissions();
   }, []);
