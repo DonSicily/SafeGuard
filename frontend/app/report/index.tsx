@@ -62,49 +62,52 @@ export default function Report() {
     }
   };
 
-  const startRecording = async () => {
+  const startRecording = () => {
     if (!cameraRef) {
       Alert.alert('Error', 'Camera not ready');
       return;
     }
 
-    try {
-      setIsRecording(true);
-      setRecordingStartTime(Date.now());
-      
-      // Start recording
-      const video = await cameraRef.recordAsync({ 
-        maxDuration: 300,
-        quality: '720p'
+    console.log('Starting recording...');
+    setIsRecording(true);
+    setRecordingStartTime(Date.now());
+    
+    // Start recording and handle promise separately
+    recordingPromiseRef.current = cameraRef.recordAsync({ 
+      maxDuration: 300,
+      quality: '720p'
+    });
+    
+    // Handle the promise completion
+    recordingPromiseRef.current
+      .then((video: any) => {
+        console.log('Recording promise resolved with video:', video);
+        if (video && video.uri) {
+          setRecordingUri(video.uri);
+          const duration = recordingStartTime ? (Date.now() - recordingStartTime) / 1000 : 0;
+          console.log('Video saved successfully, duration:', duration);
+          Alert.alert('Success', `Video recorded (${Math.round(duration)}s)`);
+        }
+        setIsRecording(false);
+        setRecordingStartTime(null);
+        recordingPromiseRef.current = null;
+      })
+      .catch((error: any) => {
+        console.log('Recording promise rejected:', error.message);
+        // Don't treat stop as an error
+        if (!error.message.toLowerCase().includes('stopped') && 
+            !error.message.toLowerCase().includes('abort')) {
+          Alert.alert('Recording Error', error.message);
+        }
+        setIsRecording(false);
+        setRecordingStartTime(null);
+        recordingPromiseRef.current = null;
       });
-      
-      // Recording completed (either by stopRecording or max duration)
-      setIsRecording(false);
-      const duration = recordingStartTime ? (Date.now() - recordingStartTime) / 1000 : 0;
-      setRecordingStartTime(null);
-      
-      console.log('Recording completed, duration:', duration, 'seconds');
-      
-      if (video && video.uri) {
-        setRecordingUri(video.uri);
-        Alert.alert('Success', `Video recorded successfully (${Math.round(duration)}s)`);
-      }
-    } catch (error: any) {
-      console.error('Recording error:', error);
-      setIsRecording(false);
-      setRecordingStartTime(null);
-      
-      // Only show meaningful errors to user
-      // Some errors are expected when user stops recording
-      if (error.message && !error.message.toLowerCase().includes('stopped')) {
-        Alert.alert('Recording Error', error.message);
-      }
-    }
   };
 
   const stopRecording = () => {
-    if (cameraRef && isRecording) {
-      console.log('Stopping recording...');
+    if (cameraRef && isRecording && recordingPromiseRef.current) {
+      console.log('User clicked stop, stopping recording...');
       cameraRef.stopRecording();
     }
   };
