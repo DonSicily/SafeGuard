@@ -53,39 +53,40 @@ export default function Report() {
     try {
       setIsRecording(true);
       setRecordingStartTime(Date.now());
-      const video = await cameraRef.recordAsync({ maxDuration: 300 });
-      // When stopRecording is called, recordAsync resolves with the video
+      
+      // Start recording
+      const video = await cameraRef.recordAsync({ 
+        maxDuration: 300,
+        quality: '720p'
+      });
+      
+      // Recording completed (either by stopRecording or max duration)
       setIsRecording(false);
+      const duration = recordingStartTime ? (Date.now() - recordingStartTime) / 1000 : 0;
       setRecordingStartTime(null);
+      
+      console.log('Recording completed, duration:', duration, 'seconds');
       
       if (video && video.uri) {
         setRecordingUri(video.uri);
-        Alert.alert('Success', 'Video recorded successfully');
+        Alert.alert('Success', `Video recorded successfully (${Math.round(duration)}s)`);
       }
     } catch (error: any) {
       console.error('Recording error:', error);
       setIsRecording(false);
       setRecordingStartTime(null);
       
-      // Check if error is due to stopping too quickly
-      if (error.message && error.message.includes('stopped before any data')) {
-        Alert.alert('Recording Too Short', 'Please record for at least 1-2 seconds before stopping.');
-      } else if (error.message && !error.message.toLowerCase().includes('cancel') && !error.message.toLowerCase().includes('stop')) {
-        Alert.alert('Error', `Failed to record: ${error.message}`);
+      // Only show meaningful errors to user
+      // Some errors are expected when user stops recording
+      if (error.message && !error.message.toLowerCase().includes('stopped')) {
+        Alert.alert('Recording Error', error.message);
       }
     }
   };
 
   const stopRecording = () => {
     if (cameraRef && isRecording) {
-      // Check minimum recording duration (1 second)
-      if (recordingStartTime) {
-        const recordingDuration = Date.now() - recordingStartTime;
-        if (recordingDuration < 1000) {
-          Alert.alert('Too Quick', 'Please record for at least 1 second before stopping.');
-          return;
-        }
-      }
+      console.log('Stopping recording...');
       cameraRef.stopRecording();
     }
   };
