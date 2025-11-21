@@ -133,7 +133,15 @@ export default function PanicActive() {
     try {
       const token = await AsyncStorage.getItem('auth_token');
       if (intervalRef.current) clearInterval(intervalRef.current);
-      await Location.stopLocationUpdatesAsync(LOCATION_TASK);
+      
+      // Stop background tracking if it was started
+      try {
+        if (Location.stopLocationUpdatesAsync) {
+          await Location.stopLocationUpdatesAsync(LOCATION_TASK);
+        }
+      } catch (bgError) {
+        console.log('Background tracking stop error (expected in Expo Go):', bgError);
+      }
       await axios.post(`${BACKEND_URL}/api/panic/deactivate`, {}, { headers: { Authorization: `Bearer ${token}` } });
       setIsTracking(false);
       Alert.alert('Success', 'Panic mode deactivated', [{ text: 'OK', onPress: () => router.replace('/civil/home') }]);
