@@ -93,24 +93,40 @@ export default function PanicActive() {
   const startLocationTracking = async (token: string) => {
     intervalRef.current = setInterval(async () => {
       try {
-        const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+        const location = await Location.getCurrentPositionAsync({ 
+          accuracy: Location.Accuracy.High,
+          timeInterval: 5000
+        });
         await axios.post(`${BACKEND_URL}/api/panic/location`, {
           latitude: location.coords.latitude,
           longitude: location.coords.longitude,
           accuracy: location.coords.accuracy,
           timestamp: new Date().toISOString()
         }, { headers: { Authorization: `Bearer ${token}` } });
+        console.log('Panic location updated:', location.coords.latitude, location.coords.longitude);
       } catch (error) {
         console.error('Location tracking error:', error);
       }
     }, 30000);
 
-    await Location.startLocationUpdatesAsync(LOCATION_TASK, {
-      accuracy: Location.Accuracy.High,
-      timeInterval: 30000,
-      distanceInterval: 0,
-      foregroundService: { notificationTitle: 'SafeGuard Active', notificationBody: 'Location tracking' },
-    });
+    // Note: Background location tracking (startLocationUpdatesAsync) only works in APK/development builds
+    // For Expo Go, we use interval-based tracking above
+    try {
+      if (Location.startLocationUpdatesAsync) {
+        await Location.startLocationUpdatesAsync(LOCATION_TASK, {
+          accuracy: Location.Accuracy.High,
+          timeInterval: 30000,
+          distanceInterval: 0,
+          foregroundService: { 
+            notificationTitle: 'SafeGuard Active', 
+            notificationBody: 'Location tracking for your safety' 
+          },
+        });
+        console.log('Background location tracking started');
+      }
+    } catch (bgError) {
+      console.log('Background tracking not available (Expo Go limitation):', bgError);
+    }
   };
 
   const deactivatePanicMode = async () => {
