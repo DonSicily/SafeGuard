@@ -59,7 +59,18 @@ export default function PanicActive() {
     }
   };
 
-  const activatePanicMode = async () => {
+  const handleCategorySelect = (category: string) => {
+    setSelectedCategory(category);
+    setShowCategoryModal(false);
+    activatePanicMode(category);
+  };
+
+  const handleCategoryCancel = () => {
+    setShowCategoryModal(false);
+    router.back();
+  };
+
+  const activatePanicMode = async (category?: string) => {
     try {
       const { status: foregroundStatus } = await Location.requestForegroundPermissionsAsync();
       if (foregroundStatus !== 'granted') {
