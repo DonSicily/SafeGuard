@@ -1,7 +1,61 @@
-import { Stack } from 'expo-router';
+import React, { useEffect, useRef } from 'react';
+import { Stack, useRouter } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { Alert } from 'react-native';
+import * as Notifications from 'expo-notifications';
+import { 
+  addNotificationReceivedListener, 
+  addNotificationResponseListener,
+  NotificationData 
+} from '../utils/notifications';
 
 export default function RootLayout() {
+  const router = useRouter();
+  const notificationListener = useRef<any>();
+  const responseListener = useRef<any>();
+
+  useEffect(() => {
+    // Listen for notifications received while app is foregrounded
+    notificationListener.current = addNotificationReceivedListener((notification) => {
+      const data = notification.request.content.data as NotificationData;
+      console.log('Notification received in foreground:', data);
+      
+      // Show an in-app alert for important notifications
+      if (data?.type === 'panic') {
+        Alert.alert(
+          '🚨 EMERGENCY ALERT',
+          notification.request.content.body || 'Panic alert nearby!',
+          [
+            { text: 'View', onPress: () => router.push('/security/panics') },
+            { text: 'Dismiss', style: 'cancel' }
+          ]
+        );
+      }
+    });
+
+    // Listen for notification taps (user interacts with notification)
+    responseListener.current = addNotificationResponseListener((response) => {
+      const data = response.notification.request.content.data as NotificationData;
+      console.log('Notification tapped:', data);
+      
+      // Navigate based on notification type
+      if (data?.type === 'panic') {
+        router.push('/security/panics');
+      } else if (data?.type === 'report') {
+        router.push('/security/reports');
+      }
+    });
+
+    return () => {
+      if (notificationListener.current) {
+        Notifications.removeNotificationSubscription(notificationListener.current);
+      }
+      if (responseListener.current) {
+        Notifications.removeNotificationSubscription(responseListener.current);
+      }
+    };
+  }, []);
+
   return (
     <SafeAreaProvider>
       <Stack
