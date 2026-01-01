@@ -38,16 +38,17 @@ export default function PanicActive() {
   const router = useRouter();
   const [isTracking, setIsTracking] = useState(false);
   const [panicId, setPanicId] = useState<string | null>(null);
+  const [showCategoryModal, setShowCategoryModal] = useState(true); // Show modal first
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const intervalRef = useRef<any>(null);
 
   useEffect(() => {
-    activatePanicMode();
     const subscription = AppState.addEventListener('change', handleAppStateChange);
     return () => {
       subscription.remove();
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, []);
+  }, [isTracking]);
 
   const handleAppStateChange = (nextAppState: string) => {
     if (nextAppState === 'active' && isTracking) {
