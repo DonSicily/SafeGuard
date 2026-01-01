@@ -317,10 +317,26 @@ async def activate_panic(panic_data: LocationPoint, user = Depends(get_current_u
     if user.get('role') != 'civil':
         raise HTTPException(status_code=403, detail="Only civil users can activate panic")
     
+    # Map category labels for notifications
+    CATEGORY_LABELS = {
+        'violence': 'Violence/Assault',
+        'robbery': 'Armed Robbery',
+        'kidnapping': 'Kidnapping/Abduction',
+        'burglary': 'Break-in/Burglary',
+        'medical': 'Medical Emergency',
+        'fire': 'Fire/Accident',
+        'harassment': 'Harassment/Stalking',
+        'other': 'Emergency'
+    }
+    
+    category = panic_data.emergency_category or 'other'
+    category_label = CATEGORY_LABELS.get(category, 'Emergency')
+    
     panic_event = {
         'user_id': str(user['_id']),
         'activated_at': datetime.utcnow(),
         'is_active': True,
+        'emergency_category': category,
         'location': {
             'type': 'Point',
             'coordinates': [panic_data.longitude, panic_data.latitude]
@@ -346,12 +362,12 @@ async def activate_panic(panic_data: LocationPoint, user = Depends(get_current_u
     
     security_user_ids = [team['user_id'] for team in security_teams]
     if security_user_ids:
-        # Send push notifications
+        # Send push notifications with category
         await send_push_notification(
             security_user_ids,
-            "🚨 PANIC ALERT",
-            f"Panic button activated nearby at {panic_data.latitude:.4f}, {panic_data.longitude:.4f}",
-            {'type': 'panic', 'event_id': str(result.inserted_id)}
+            f"🚨 {category_label.upper()} ALERT",
+            f"{category_label} reported nearby at {panic_data.latitude:.4f}, {panic_data.longitude:.4f}",
+            {'type': 'panic', 'event_id': str(result.inserted_id), 'category': category}
         )
         
         # Send email alerts to security users
