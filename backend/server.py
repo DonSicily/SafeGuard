@@ -223,18 +223,39 @@ async def register(user_data: UserRegister):
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
     
-    # Validate security role
+    # Validate security role and invite code
     if user_data.role == "security":
-        if not user_data.invite_code or user_data.invite_code != "SECURITY2025":
-            raise HTTPException(status_code=403, detail="Invalid security invite code")
+        if not user_data.invite_code:
+            raise HTTPException(status_code=403, detail="Invite code required for security registration")
+        
+        # Check invite code validity
+        invite = await db.invite_codes.find_one({
+            'code': user_data.invite_code,
+            'is_active': True,
+            'expires_at': {'$gt': datetime.utcnow()}
+        })
+        
+        if not invite:
+            raise HTTPException(status_code=403, detail="Invalid or expired invite code")
+        
+        if invite.get('used_count', 0) >= invite.get('max_uses', 10):
+            raise HTTPException(status_code=403, detail="Invite code has reached maximum uses")
+        
+        # Increment used count
+        await db.invite_codes.update_one(
+            {'_id': invite['_id']},
+            {'$inc': {'used_count': 1}}
+        )
     
     # Create user
     user = {
         'email': user_data.email,
         'phone': user_data.phone,
-        'password': hash_password(user_data.password),
+        'full_name': user_data.full_name or '',
+        'password_hash': hash_password(user_data.password),
         'role': user_data.role,
         'is_premium': False,
+        'is_active': True,
         'is_verified': True,  # Auto-verify for demo
         'app_name': 'SafeGuard',
         'app_logo': 'shield',
@@ -242,10 +263,18 @@ async def register(user_data: UserRegister):
         'google_id': None
     }
     
+    # Add security-specific fields
+    if user_data.role == "security":
+        user['security_sub_role'] = user_data.security_sub_role or 'team_member'
+        user['team_name'] = user_data.team_name or ''
+        user['status'] = 'available'
+        user['visibility_radius_km'] = 25
+        user['is_visible'] = True
+    
     result = await db.users.insert_one(user)
     user_id = str(result.inserted_id)
     
-    # Create security team if security user
+    # Create security team entry if security user
     if user_data.role == "security":
         team = {
             'user_id': user_id,
