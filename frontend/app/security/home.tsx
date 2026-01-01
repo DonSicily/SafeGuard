@@ -99,6 +99,28 @@ export default function SecurityHome() {
             </Text>
           </View>
         )}
+
+        {/* Quick Actions */}
+        <View style={styles.quickActions}>
+          <TouchableOpacity style={styles.quickAction} onPress={() => router.push('/security/nearby')}>
+            <View style={[styles.quickActionIcon, { backgroundColor: '#F59E0B20' }]}>
+              <Ionicons name="people" size={24} color="#F59E0B" />
+            </View>
+            <Text style={styles.quickActionText}>Nearby</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.quickAction} onPress={() => router.push('/security/chat')}>
+            <View style={[styles.quickActionIcon, { backgroundColor: '#3B82F620' }]}>
+              <Ionicons name="chatbubbles" size={24} color="#3B82F6" />
+            </View>
+            <Text style={styles.quickActionText}>Chat</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.quickAction} onPress={() => router.push('/security/settings')}>
+            <View style={[styles.quickActionIcon, { backgroundColor: '#8B5CF620' }]}>
+              <Ionicons name="settings" size={24} color="#8B5CF6" />
+            </View>
+            <Text style={styles.quickActionText}>Settings</Text>
+          </TouchableOpacity>
+        </View>
         
         <TouchableOpacity style={styles.locationCard} onPress={() => router.push('/security/set-location')}>
           <View style={styles.cardHeader}>
