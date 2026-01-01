@@ -139,6 +139,24 @@ export default function CivilHome() {
           </TouchableOpacity>
         </View>
 
+        {/* Pending Uploads Indicator */}
+        {pendingUploads > 0 && (
+          <TouchableOpacity style={styles.pendingUploadsCard} onPress={handleRetryUploads}>
+            <View style={styles.cardLeft}>
+              <View style={[styles.iconCircle, { backgroundColor: '#F59E0B20' }]}>
+                <Ionicons name="cloud-upload-outline" size={28} color="#F59E0B" />
+              </View>
+              <View>
+                <Text style={styles.cardTitle}>Pending Uploads</Text>
+                <Text style={styles.cardDescription}>{pendingUploads} report(s) waiting to upload</Text>
+              </View>
+            </View>
+            <View style={styles.pendingBadge}>
+              <Text style={styles.pendingBadgeText}>{pendingUploads}</Text>
+            </View>
+          </TouchableOpacity>
+        )}
+
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>My Reports</Text>
