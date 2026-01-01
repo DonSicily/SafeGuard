@@ -271,28 +271,57 @@ export default function Report() {
             style={styles.camera}
             facing="back"
             ref={(ref) => setCameraRef(ref)}
+            onCameraReady={onCameraReady}
+            mode="video"
           >
+            {/* Recording Timer Overlay - Large & Prominent */}
             {isRecording && (
-              <View style={styles.recordingIndicator}>
-                <View style={styles.recordingDot} />
-                <Text style={styles.recordingText}>RECORDING</Text>
-                <Text style={styles.recordingTimer}>
-                  {Math.floor(recordingDuration / 60)}:{(recordingDuration % 60).toString().padStart(2, '0')}
-                </Text>
+              <View style={styles.timerOverlay}>
+                <View style={styles.timerContainer}>
+                  <Animated.View style={[styles.recordingDotLarge, { transform: [{ scale: pulseAnim }] }]} />
+                  <Text style={styles.timerText}>{formatDuration(recordingDuration)}</Text>
+                </View>
+                <Text style={styles.recordingLabel}>RECORDING</Text>
+                {recordingDuration < MIN_RECORDING_DURATION && (
+                  <Text style={styles.minDurationHint}>Record at least {MIN_RECORDING_DURATION} seconds</Text>
+                )}
+              </View>
+            )}
+
+            {/* Camera Ready Indicator */}
+            {!cameraReady && !isRecording && (
+              <View style={styles.loadingOverlay}>
+                <ActivityIndicator size="large" color="#fff" />
+                <Text style={styles.loadingText}>Initializing camera...</Text>
               </View>
             )}
           </CameraView>
 
           <View style={styles.cameraControls}>
             {!isRecording ? (
-              <TouchableOpacity style={styles.recordButton} onPress={startRecording}>
+              <TouchableOpacity 
+                style={[styles.recordButton, !cameraReady && styles.disabledButton]} 
+                onPress={startRecording}
+                disabled={!cameraReady}
+              >
                 <View style={styles.recordButtonInner} />
               </TouchableOpacity>
             ) : (
-              <TouchableOpacity style={styles.stopButton} onPress={stopRecording}>
+              <TouchableOpacity 
+                style={[
+                  styles.stopButton, 
+                  recordingDuration < MIN_RECORDING_DURATION && styles.stopButtonDisabled
+                ]} 
+                onPress={stopRecording}
+              >
                 <View style={styles.stopButtonInner} />
               </TouchableOpacity>
             )}
+            
+            {/* Duration hint below button */}
+            <Text style={styles.controlHint}>
+              {!isRecording ? 'Tap to start recording' : `Tap to stop${recordingDuration < MIN_RECORDING_DURATION ? ` (wait ${MIN_RECORDING_DURATION - recordingDuration}s)` : ''}`}
+            </Text>
           </View>
         </View>
       ) : (
