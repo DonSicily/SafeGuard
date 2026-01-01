@@ -87,7 +87,8 @@ export default function PanicActive() {
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
         accuracy: location.coords.accuracy,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        emergency_category: category || selectedCategory || 'other'
       }, { headers: { Authorization: `Bearer ${token}` } });
 
       setPanicId(response.data.panic_id);
