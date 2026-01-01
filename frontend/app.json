@@ -78,6 +78,14 @@
         }
       ],
       [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#EF4444",
+          "sounds": []
+        }
+      ],
+      [
         "expo-task-manager"
       ],
       [
