@@ -86,6 +86,11 @@ export default function Login() {
                 <Text style={styles.linkText}>Sign Up</Text>
               </TouchableOpacity>
             </View>
+
+            <TouchableOpacity style={styles.adminLink} onPress={() => router.push('/admin/login')}>
+              <Ionicons name="shield-checkmark" size={18} color="#8B5CF6" />
+              <Text style={styles.adminLinkText}>Admin Portal</Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -103,6 +108,8 @@ const styles = StyleSheet.create({
   form: { width: '100%' },
   inputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1E293B', borderRadius: 12, paddingHorizontal: 16, marginBottom: 16, borderWidth: 1, borderColor: '#334155' },
   input: { flex: 1, color: '#fff', fontSize: 16, paddingVertical: 16, marginLeft: 12 },
+  adminLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 32, paddingVertical: 12 },
+  adminLinkText: { fontSize: 14, color: '#8B5CF6', fontWeight: '500' },
   loginButton: { backgroundColor: '#EF4444', borderRadius: 12, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
   loginButtonText: { color: '#fff', fontSize: 18, fontWeight: '600' },
   footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 24 },
