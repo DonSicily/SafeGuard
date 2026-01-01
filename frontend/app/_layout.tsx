@@ -3,24 +3,36 @@ import { Stack, useRouter } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Alert } from 'react-native';
 import * as Notifications from 'expo-notifications';
-import { 
-  addNotificationReceivedListener, 
-  addNotificationResponseListener,
-  NotificationData 
-} from '../utils/notifications';
 import { startQueueProcessor } from '../utils/offlineQueue';
+
+// Configure notification handler
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
+
+type NotificationData = {
+  type?: 'panic' | 'report' | 'general';
+  event_id?: string;
+  report_id?: string;
+};
 
 export default function RootLayout() {
   const router = useRouter();
-  const notificationListener = useRef<any>();
-  const responseListener = useRef<any>();
+  const notificationListener = useRef<Notifications.EventSubscription | null>(null);
+  const responseListener = useRef<Notifications.EventSubscription | null>(null);
 
   useEffect(() => {
     // Start offline queue processor
     const stopQueueProcessor = startQueueProcessor();
 
     // Listen for notifications received while app is foregrounded
-    notificationListener.current = addNotificationReceivedListener((notification) => {
+    notificationListener.current = Notifications.addNotificationReceivedListener((notification) => {
       const data = notification.request.content.data as NotificationData;
       console.log('Notification received in foreground:', data);
       
@@ -38,7 +50,7 @@ export default function RootLayout() {
     });
 
     // Listen for notification taps (user interacts with notification)
-    responseListener.current = addNotificationResponseListener((response) => {
+    responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
       const data = response.notification.request.content.data as NotificationData;
       console.log('Notification tapped:', data);
       
@@ -53,10 +65,10 @@ export default function RootLayout() {
     return () => {
       stopQueueProcessor();
       if (notificationListener.current) {
-        Notifications.removeNotificationSubscription(notificationListener.current);
+        notificationListener.current.remove();
       }
       if (responseListener.current) {
-        Notifications.removeNotificationSubscription(responseListener.current);
+        responseListener.current.remove();
       }
     };
   }, []);
