@@ -18,6 +18,10 @@ export default function SecurityNearby() {
   const [loading, setLoading] = useState(true);
   const [locationError, setLocationError] = useState('');
 
+  const goBack = () => {
+    router.replace('/security/home');
+  };
+
   useEffect(() => {
     loadNearbyUsers();
   }, []);
