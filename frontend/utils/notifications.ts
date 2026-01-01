@@ -6,15 +6,6 @@ import axios from 'axios';
 
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
-// Configure how notifications should be handled when app is in foreground
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
-});
-
 /**
  * Request notification permissions and get Expo push token
  */
@@ -43,7 +34,7 @@ export async function registerForPushNotifications(): Promise<string | null> {
 
     // Get Expo push token
     const tokenData = await Notifications.getExpoPushTokenAsync({
-      projectId: 'safeguard-app', // Using app name as project ID
+      projectId: 'safeguard-app',
     });
     
     const token = tokenData.data;
@@ -59,7 +50,6 @@ export async function registerForPushNotifications(): Promise<string | null> {
         sound: 'default',
       });
 
-      // Create a high-priority channel for emergencies
       await Notifications.setNotificationChannelAsync('emergency', {
         name: 'Emergency Alerts',
         importance: Notifications.AndroidImportance.MAX,
@@ -99,35 +89,11 @@ export async function registerTokenWithServer(token: string): Promise<boolean> {
       }
     );
 
-    // Store token locally for reference
     await AsyncStorage.setItem('push_token', token);
     console.log('Push token registered with server successfully');
     return true;
   } catch (error: any) {
     console.error('Failed to register push token with server:', error.response?.data || error.message);
-    return false;
-  }
-}
-
-/**
- * Unregister push token from server (on logout)
- */
-export async function unregisterPushToken(): Promise<boolean> {
-  try {
-    const authToken = await AsyncStorage.getItem('auth_token');
-    if (!authToken) {
-      return true; // Already logged out
-    }
-
-    await axios.delete(`${BACKEND_URL}/api/push-token/unregister`, {
-      headers: { Authorization: `Bearer ${authToken}` },
-    });
-
-    await AsyncStorage.removeItem('push_token');
-    console.log('Push token unregistered successfully');
-    return true;
-  } catch (error: any) {
-    console.error('Failed to unregister push token:', error.response?.data || error.message);
     return false;
   }
 }
@@ -144,30 +110,3 @@ export async function setupPushNotifications(): Promise<boolean> {
   
   return false;
 }
-
-/**
- * Handle notification response (when user taps notification)
- */
-export function addNotificationResponseListener(
-  callback: (notification: Notifications.NotificationResponse) => void
-) {
-  return Notifications.addNotificationResponseReceivedListener(callback);
-}
-
-/**
- * Handle received notification (when app is foregrounded)
- */
-export function addNotificationReceivedListener(
-  callback: (notification: Notifications.Notification) => void
-) {
-  return Notifications.addNotificationReceivedListener(callback);
-}
-
-// Export notification types for type safety
-export type NotificationData = {
-  type: 'panic' | 'report' | 'general';
-  event_id?: string;
-  report_id?: string;
-  title?: string;
-  body?: string;
-};
