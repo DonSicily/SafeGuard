@@ -140,7 +140,7 @@ index 7d3e763..e69de29 100644
 -----+from datetime import datetime
 -----+
 -----+# Backend URL from frontend/.env
------+BACKEND_URL = "https://safety-tracker-26.preview.emergentagent.com/api"
+-----+BACKEND_URL = "https://safeguard-mobile-6.preview.emergentagent.com/api"
 -----+
 -----+class AudioReportTester:
 -----+    def __init__(self):
