@@ -52,6 +52,14 @@ export default function Register() {
       await AsyncStorage.setItem('user_role', response.data.role);
       await AsyncStorage.setItem('is_premium', String(response.data.is_premium));
 
+      // Setup push notifications after successful registration
+      try {
+        const pushSetup = await setupPushNotifications();
+        console.log('Push notifications setup:', pushSetup ? 'success' : 'skipped');
+      } catch (pushError) {
+        console.log('Push notification setup error (non-fatal):', pushError);
+      }
+
       Alert.alert('Success!', 'Registration successful', [
         { text: 'OK', onPress: () => {
           if (response.data.role === 'security') {
