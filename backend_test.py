@@ -500,7 +500,7 @@ class SafeGuardAPITester:
 
     def run_focused_tests(self):
         """Run the specific tests requested in the review"""
-        print("🚀 Starting SafeGuard Backend API Tests - Push Token & Panic Category Focus")
+        print("🚀 Starting SafeGuard Backend API Tests - Comprehensive Review")
         print(f"Backend URL: {API_BASE}")
         print(f"Timestamp: {datetime.now().isoformat()}")
         
@@ -509,9 +509,12 @@ class SafeGuardAPITester:
             print("❌ Failed to register test user. Cannot proceed with authenticated tests.")
             return
         
-        # Run specific tests as requested
-        self.test_push_token_registration()
+        # Run all requested tests from the review
+        self.test_authentication_endpoints()
         self.test_panic_activation_with_categories()
+        self.test_panic_deactivation()
+        self.test_reports_api()
+        self.test_push_token_registration()
         self.test_panic_authentication_requirement()
         
         # Print summary
