@@ -7,6 +7,7 @@ import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
+import EmergencyCategoryModal from '../../components/EmergencyCategoryModal';
 
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 const LOCATION_TASK = 'background-location-panic';
