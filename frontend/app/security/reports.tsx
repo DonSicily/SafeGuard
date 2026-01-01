@@ -124,9 +124,31 @@ export default function SecurityReports() {
       </View>
 
       {item.file_url && (
-        <TouchableOpacity style={styles.viewButton}>
-          <Ionicons name="play-circle" size={20} color="#3B82F6" />
-          <Text style={styles.viewButtonText}>View {item.type}</Text>
+        <TouchableOpacity 
+          style={styles.viewButton}
+          onPress={() => {
+            if (item.type === 'audio') {
+              playAudio(item.file_url, item._id);
+            } else {
+              Alert.alert('Video', 'Video playback - Opening in browser or external player');
+            }
+          }}
+        >
+          <Ionicons 
+            name={
+              item.type === 'audio' 
+                ? (playingId === item._id ? 'pause-circle' : 'play-circle')
+                : 'videocam'
+            } 
+            size={20} 
+            color="#3B82F6" 
+          />
+          <Text style={styles.viewButtonText}>
+            {item.type === 'audio' 
+              ? (playingId === item._id ? 'Pause Audio' : 'Play Audio')
+              : 'View Video'
+            }
+          </Text>
         </TouchableOpacity>
       )}
     </View>
