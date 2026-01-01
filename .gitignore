@@ -107,3 +107,7 @@ safeguard-frontend.tar.gz
 *.env
 *.env.*
 safeguard-frontend.zip
+-e 
+# Environment files
+*.env
+*.env.*
