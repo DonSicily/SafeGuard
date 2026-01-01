@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-SafeGuard Backend API Testing - Focus on Push Token Registration and Panic Category
-Testing specific features as requested in review.
+SafeGuard Backend API Testing - Admin and Enhanced Security Features
+Testing the new Admin and enhanced Security features in SafeGuard backend
 """
 
 import requests
