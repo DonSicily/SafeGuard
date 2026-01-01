@@ -114,6 +114,11 @@ export default function Register() {
             </View>
 
             <View style={styles.inputContainer}>
+              <Ionicons name="person-outline" size={20} color="#64748B" />
+              <TextInput style={styles.input} placeholder="Full Name" placeholderTextColor="#64748B" value={fullName} onChangeText={setFullName} />
+            </View>
+
+            <View style={styles.inputContainer}>
               <Ionicons name="mail-outline" size={20} color="#64748B" />
               <TextInput style={styles.input} placeholder="Email" placeholderTextColor="#64748B" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
             </View>
@@ -137,11 +142,38 @@ export default function Register() {
             </View>
 
             {role === 'security' && (
-              <View style={styles.inputContainer}>
-                <Ionicons name="key-outline" size={20} color="#64748B" />
-                <TextInput style={styles.input} placeholder="Security Invite Code" placeholderTextColor="#64748B" value={inviteCode} onChangeText={setInviteCode} autoCapitalize="characters" />
-              </View>
+              <>
+                <View style={styles.inputContainer}>
+                  <Ionicons name="key-outline" size={20} color="#64748B" />
+                  <TextInput style={styles.input} placeholder="Security Invite Code" placeholderTextColor="#64748B" value={inviteCode} onChangeText={setInviteCode} autoCapitalize="characters" />
+                </View>
+
+                <Text style={styles.label}>Your Role:</Text>
+                <View style={styles.roleContainer}>
+                  <TouchableOpacity
+                    style={[styles.subRoleButton, securitySubRole === 'supervisor' && styles.subRoleButtonActive]}
+                    onPress={() => setSecuritySubRole('supervisor')}
+                  >
+                    <Ionicons name="star" size={20} color={securitySubRole === 'supervisor' ? '#F59E0B' : '#64748B'} />
+                    <Text style={[styles.subRoleText, securitySubRole === 'supervisor' && styles.subRoleTextActive]}>Supervisor</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={[styles.subRoleButton, securitySubRole === 'team_member' && styles.subRoleButtonActive]}
+                    onPress={() => setSecuritySubRole('team_member')}
+                  >
+                    <Ionicons name="people" size={20} color={securitySubRole === 'team_member' ? '#F59E0B' : '#64748B'} />
+                    <Text style={[styles.subRoleText, securitySubRole === 'team_member' && styles.subRoleTextActive]}>Team Member</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.inputContainer}>
+                  <Ionicons name="business-outline" size={20} color="#64748B" />
+                  <TextInput style={styles.input} placeholder="Team Name (optional)" placeholderTextColor="#64748B" value={teamName} onChangeText={setTeamName} />
+                </View>
+              </>
             )}
+
 
             <TouchableOpacity style={styles.registerButton} onPress={handleRegister} disabled={loading}>
               {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.registerButtonText}>Create Account</Text>}
