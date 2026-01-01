@@ -166,6 +166,13 @@ export default function PanicActive() {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Emergency Category Selection Modal */}
+      <EmergencyCategoryModal
+        visible={showCategoryModal}
+        onSelect={handleCategorySelect}
+        onCancel={handleCategoryCancel}
+      />
+
       <View style={styles.content}>
         <View style={styles.header}>
           <Ionicons name="alert-circle" size={100} color="#EF4444" />
