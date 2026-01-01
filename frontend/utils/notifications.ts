@@ -33,9 +33,7 @@ export async function registerForPushNotifications(): Promise<string | null> {
     }
 
     // Get Expo push token
-    const tokenData = await Notifications.getExpoPushTokenAsync({
-      projectId: 'safeguard-app',
-    });
+    const tokenData = await Notifications.getExpoPushTokenAsync();
     
     const token = tokenData.data;
     console.log('Expo Push Token:', token);
