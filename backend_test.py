@@ -16,10 +16,9 @@ load_dotenv('/app/frontend/.env')
 BACKEND_URL = os.getenv('EXPO_PUBLIC_BACKEND_URL', 'https://safeguard-mobile-6.preview.emergentagent.com')
 API_BASE = f"{BACKEND_URL}/api"
 
-class SafeGuardAPITester:
+class SafeGuardAdminTester:
     def __init__(self):
-        self.auth_token = None
-        self.user_id = None
+        self.admin_token = None
         self.test_results = []
         
     def log_test(self, test_name, success, details="", response_data=None):
@@ -30,13 +29,15 @@ class SafeGuardAPITester:
             print(f"   Details: {details}")
         if response_data and not success:
             print(f"   Response: {response_data}")
+        print()
+        
         self.test_results.append({
             'test': test_name,
             'success': success,
             'details': details,
-            'response_data': response_data
+            'response': response_data
         })
-        
+    
     def make_request(self, method, endpoint, data=None, token=None, expect_status=200):
         """Make HTTP request with proper headers"""
         url = f"{API_BASE}{endpoint}"
@@ -44,514 +45,236 @@ class SafeGuardAPITester:
         
         if token:
             headers['Authorization'] = f'Bearer {token}'
-        elif self.auth_token:
-            headers['Authorization'] = f'Bearer {self.auth_token}'
             
         try:
-            if method == 'GET':
-                response = requests.get(url, headers=headers, timeout=30)
-            elif method == 'POST':
-                response = requests.post(url, json=data, headers=headers, timeout=30)
-            elif method == 'PUT':
-                response = requests.put(url, json=data, headers=headers, timeout=30)
-            elif method == 'DELETE':
-                response = requests.delete(url, headers=headers, timeout=30)
+            if method.upper() == 'GET':
+                response = requests.get(url, headers=headers, timeout=15)
+            elif method.upper() == 'POST':
+                response = requests.post(url, json=data, headers=headers, timeout=15)
             else:
                 raise ValueError(f"Unsupported method: {method}")
                 
-            try:
-                response_data = response.json()
-            except:
-                response_data = {"raw_response": response.text}
-                
-            return {
-                'status_code': response.status_code,
-                'data': response_data,
-                'success': response.status_code == expect_status
-            }
-        except Exception as e:
+            return response
+            
+        except requests.exceptions.RequestException as e:
             print(f"Request failed: {e}")
-            return {
-                'status_code': 0,
-                'data': {'error': str(e)},
-                'success': False
-            }
-
-    def register_test_user(self):
-        """Register a test user for authentication"""
-        print("\n=== REGISTERING TEST USER ===")
-        test_email = f"pushtest_{datetime.now().strftime('%Y%m%d_%H%M%S')}@gmail.com"
+            return None
+    
+    def test_admin_login(self):
+        """Test Admin Login with credentials admin1@safeguard.com / Admin123!"""
+        print("Testing Admin Login...")
         
-        user_data = {
-            "email": test_email,
-            "password": "TestPass123!",
-            "confirm_password": "TestPass123!",
-            "phone": "+2348123456789",
-            "role": "civil"
-        }
+        response = self.make_request('POST', '/admin/login', {
+            "email": "admin1@safeguard.com",
+            "password": "Admin123!"
+        })
         
-        response = self.make_request("POST", "/auth/register", user_data)
-        
-        if response["success"]:
-            data = response["data"]
-            self.auth_token = data.get("token")
-            self.user_id = data.get("user_id")
-            self.log_test(
-                "User Registration", 
-                True, 
-                f"Registered user: {test_email}",
-                {"user_id": self.user_id, "email": test_email}
-            )
-            return True
-        else:
-            self.log_test(
-                "User Registration", 
-                False, 
-                f"Failed to register user: {response['data']}",
-                response['data']
-            )
+        if not response:
+            self.log_test("Admin Login", False, "Request failed")
             return False
-
-    def test_push_token_registration(self):
-        """Test push token registration endpoint"""
-        print("\n=== TESTING PUSH TOKEN REGISTRATION ===")
-        
-        # Test 1: Valid Expo push token
-        print("\n1. Testing valid Expo push token...")
-        valid_token = "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]"
-        response = self.make_request("POST", "/push-token/register", valid_token)
-        
-        if response["success"]:
-            self.log_test(
-                "Push Token Registration - Valid Token",
-                True,
-                "Successfully registered valid Expo push token",
-                response["data"]
-            )
+            
+        if response.status_code == 200:
+            data = response.json()
+            if 'token' in data and data.get('role') == 'admin':
+                self.admin_token = data['token']
+                self.log_test(
+                    "Admin Login", 
+                    True, 
+                    f"Successfully logged in as admin. User ID: {data.get('user_id')}, Email: {data.get('email')}"
+                )
+                return True
+            else:
+                self.log_test("Admin Login", False, "Response missing token or incorrect role", data)
+                return False
         else:
-            self.log_test(
-                "Push Token Registration - Valid Token",
-                False,
-                f"Failed to register valid token: {response['data']}",
-                response['data']
-            )
+            self.log_test("Admin Login", False, f"HTTP {response.status_code}", response.text)
+            return False
+    
+    def test_admin_dashboard(self):
+        """Test Admin Dashboard (requires admin token)"""
+        print("Testing Admin Dashboard...")
         
-        # Test 2: Invalid token format (missing ExponentPushToken prefix)
-        print("\n2. Testing invalid token format (no prefix)...")
-        invalid_token = "InvalidTokenFormat123"
-        response = self.make_request("POST", "/push-token/register", invalid_token)
+        if not self.admin_token:
+            self.log_test("Admin Dashboard", False, "No admin token available")
+            return False
+            
+        response = self.make_request('GET', '/admin/dashboard', token=self.admin_token)
         
-        # Check if the response indicates validation failure
-        is_validation_error = (
-            response["status_code"] >= 400 and 
-            "Invalid Expo push token format" in str(response["data"])
-        )
-        
-        if is_validation_error:
-            self.log_test(
-                "Push Token Validation - Invalid Format",
-                True,
-                "Correctly rejected invalid token format",
-                response["data"]
-            )
+        if not response:
+            self.log_test("Admin Dashboard", False, "Request failed")
+            return False
+            
+        if response.status_code == 200:
+            data = response.json()
+            required_fields = ['total_users', 'civil_users', 'security_users', 'admin_users', 
+                             'active_panics', 'total_panics', 'total_reports', 'recent_24h']
+            
+            if all(field in data for field in required_fields):
+                self.log_test(
+                    "Admin Dashboard", 
+                    True, 
+                    f"Dashboard stats retrieved: {data['total_users']} total users, {data['civil_users']} civil, {data['security_users']} security, {data['admin_users']} admin"
+                )
+                return True
+            else:
+                missing = [f for f in required_fields if f not in data]
+                self.log_test("Admin Dashboard", False, f"Missing fields: {missing}", data)
+                return False
         else:
-            self.log_test(
-                "Push Token Validation - Invalid Format",
-                False,
-                f"Should have rejected invalid token but got: {response['status_code']} - {response['data']}",
-                response['data']
-            )
+            self.log_test("Admin Dashboard", False, f"HTTP {response.status_code}", response.text)
+            return False
+    
+    def test_admin_users_list(self):
+        """Test Admin Users List"""
+        print("Testing Admin Users List...")
         
-        # Test 3: Invalid token format (missing brackets)
-        print("\n3. Testing invalid token format (no brackets)...")
-        invalid_token2 = "ExponentPushTokenWithoutBrackets"
-        response = self.make_request("POST", "/push-token/register", invalid_token2)
+        if not self.admin_token:
+            self.log_test("Admin Users List", False, "No admin token available")
+            return False
+            
+        response = self.make_request('GET', '/admin/users', token=self.admin_token)
         
-        # Check if the response indicates validation failure
-        is_validation_error = (
-            response["status_code"] >= 400 and 
-            "Invalid Expo push token format" in str(response["data"])
-        )
-        
-        if is_validation_error:
-            self.log_test(
-                "Push Token Validation - Missing Brackets",
-                True,
-                "Correctly rejected token without proper brackets",
-                response["data"]
-            )
+        if not response:
+            self.log_test("Admin Users List", False, "Request failed")
+            return False
+            
+        if response.status_code == 200:
+            data = response.json()
+            if 'users' in data and 'total' in data:
+                users = data['users']
+                self.log_test(
+                    "Admin Users List", 
+                    True, 
+                    f"Retrieved {len(users)} users out of {data['total']} total. Sample user roles: {[u.get('role') for u in users[:3]]}"
+                )
+                return True
+            else:
+                self.log_test("Admin Users List", False, "Response missing 'users' or 'total' field", data)
+                return False
         else:
-            self.log_test(
-                "Push Token Validation - Missing Brackets",
-                False,
-                f"Should have rejected token without brackets but got: {response['status_code']} - {response['data']}",
-                response['data']
-            )
+            self.log_test("Admin Users List", False, f"HTTP {response.status_code}", response.text)
+            return False
+    
+    def test_admin_invite_codes(self):
+        """Test Admin Invite Codes - verify SECURITY2025 exists"""
+        print("Testing Admin Invite Codes...")
         
-        # Test 4: Authentication requirement (test without token)
-        print("\n4. Testing authentication requirement...")
-        temp_token = self.auth_token
-        self.auth_token = None
+        if not self.admin_token:
+            self.log_test("Admin Invite Codes", False, "No admin token available")
+            return False
+            
+        response = self.make_request('GET', '/admin/invite-codes', token=self.admin_token)
         
-        response = self.make_request("POST", "/push-token/register", valid_token, expect_status=401)
-        
-        if response["success"]:
-            self.log_test(
-                "Push Token Authentication Requirement",
-                True,
-                "Correctly requires authentication",
-                response["data"]
-            )
+        if not response:
+            self.log_test("Admin Invite Codes", False, "Request failed")
+            return False
+            
+        if response.status_code == 200:
+            data = response.json()
+            if 'codes' in data:
+                codes = data['codes']
+                code_names = [code.get('code') for code in codes]
+                
+                if 'SECURITY2025' in code_names:
+                    security_code = next(c for c in codes if c.get('code') == 'SECURITY2025')
+                    self.log_test(
+                        "Admin Invite Codes", 
+                        True, 
+                        f"Found SECURITY2025 code. Used: {security_code.get('used_count')}/{security_code.get('max_uses')}. Total codes: {len(codes)}"
+                    )
+                    return True
+                else:
+                    self.log_test("Admin Invite Codes", False, f"SECURITY2025 not found. Available codes: {code_names}")
+                    return False
+            else:
+                self.log_test("Admin Invite Codes", False, "Response missing 'codes' field", data)
+                return False
         else:
-            self.log_test(
-                "Push Token Authentication Requirement",
-                False,
-                f"Should require authentication but got: {response['status_code']} - {response['data']}",
-                response['data']
-            )
+            self.log_test("Admin Invite Codes", False, f"HTTP {response.status_code}", response.text)
+            return False
+    
+    def test_security_registration_with_new_fields(self):
+        """Test Security Registration with new fields"""
+        print("Testing Security Registration with New Fields...")
         
-        # Restore auth token
-        self.auth_token = temp_token
-
-    def test_panic_activation_with_categories(self):
-        """Test panic activation with emergency categories"""
-        print("\n=== TESTING PANIC ACTIVATION WITH EMERGENCY CATEGORIES ===")
+        # Generate unique email for this test
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        test_email = f"testsecurity_{timestamp}@test.com"
         
-        # Test categories as specified in the review request
-        test_categories = [
-            "violence",
-            "robbery", 
-            "kidnapping",
-            "medical",
-            "fire",
-            "other"
+        response = self.make_request('POST', '/auth/register', {
+            "email": test_email,
+            "password": "Test123!",
+            "confirm_password": "Test123!",
+            "role": "security",
+            "invite_code": "SECURITY2025",
+            "full_name": "Test Security User",
+            "security_sub_role": "team_member",
+            "team_name": "Alpha Team"
+        })
+        
+        if not response:
+            self.log_test("Security Registration with New Fields", False, "Request failed")
+            return False
+            
+        if response.status_code == 200:
+            data = response.json()
+            if 'token' in data and data.get('role') == 'security':
+                self.log_test(
+                    "Security Registration with New Fields", 
+                    True, 
+                    f"Successfully registered security user: {test_email} with team_member role in Alpha Team. User ID: {data.get('user_id')}"
+                )
+                return True
+            else:
+                self.log_test("Security Registration with New Fields", False, "Response missing token or incorrect role", data)
+                return False
+        else:
+            self.log_test("Security Registration with New Fields", False, f"HTTP {response.status_code}", response.text)
+            return False
+    
+    def run_all_tests(self):
+        """Run all admin and security tests"""
+        print("=" * 80)
+        print("SAFEGUARD ADMIN & ENHANCED SECURITY FEATURES TESTING")
+        print("=" * 80)
+        print(f"Backend URL: {API_BASE}")
+        print(f"Test started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print()
+        
+        # Test sequence
+        tests = [
+            ("Admin Login", self.test_admin_login),
+            ("Admin Dashboard", self.test_admin_dashboard),
+            ("Admin Users List", self.test_admin_users_list),
+            ("Admin Invite Codes", self.test_admin_invite_codes),
+            ("Security Registration with New Fields", self.test_security_registration_with_new_fields)
         ]
         
-        for i, category in enumerate(test_categories, 1):
-            print(f"\n{i}. Testing panic activation with category: {category}")
-            
-            # Test panic activation with specific category
-            panic_data = {
-                "latitude": 6.5244,  # Lagos coordinates
-                "longitude": 3.3792,
-                "accuracy": 10.0,
-                "emergency_category": category
-            }
-            
-            response = self.make_request("POST", "/panic/activate", panic_data)
-            
-            if response["success"]:
-                panic_id = response["data"].get("panic_id")
-                self.log_test(
-                    f"Panic Activation - Category: {category}",
-                    True,
-                    f"Successfully activated panic with category '{category}', panic_id: {panic_id}",
-                    {"panic_id": panic_id, "category": category}
-                )
-                
-                # Deactivate panic to clean up
-                deactivate_response = self.make_request("POST", "/panic/deactivate")
-                if deactivate_response["success"]:
-                    print(f"   ✓ Panic deactivated successfully")
-                else:
-                    print(f"   ⚠ Warning: Failed to deactivate panic: {deactivate_response['data']}")
-                
-            else:
-                self.log_test(
-                    f"Panic Activation - Category: {category}",
-                    False,
-                    f"Failed to activate panic with category '{category}': {response['data']}",
-                    response['data']
-                )
+        passed = 0
+        total = len(tests)
         
-        # Test panic activation without category (should default to 'other')
-        print(f"\n{len(test_categories)+1}. Testing panic activation without category (should default)...")
-        panic_data_no_category = {
-            "latitude": 6.5244,
-            "longitude": 3.3792,
-            "accuracy": 10.0
-        }
+        for test_name, test_func in tests:
+            try:
+                if test_func():
+                    passed += 1
+            except Exception as e:
+                self.log_test(test_name, False, f"Exception: {str(e)}")
         
-        response = self.make_request("POST", "/panic/activate", panic_data_no_category)
-        
-        if response["success"]:
-            panic_id = response["data"].get("panic_id")
-            self.log_test(
-                "Panic Activation - No Category (Default)",
-                True,
-                f"Successfully activated panic without category (should default to 'other'), panic_id: {panic_id}",
-                {"panic_id": panic_id}
-            )
-            
-            # Deactivate panic
-            deactivate_response = self.make_request("POST", "/panic/deactivate")
-            if deactivate_response["success"]:
-                print(f"   ✓ Panic deactivated successfully")
-            
-        else:
-            self.log_test(
-                "Panic Activation - No Category (Default)",
-                False,
-                f"Failed to activate panic without category: {response['data']}",
-                response['data']
-            )
-
-    def test_panic_authentication_requirement(self):
-        """Test that panic activation requires authentication"""
-        print("\n=== TESTING PANIC AUTHENTICATION REQUIREMENT ===")
-        
-        # Test without authentication
-        temp_token = self.auth_token
-        self.auth_token = None
-        
-        panic_data = {
-            "latitude": 6.5244,
-            "longitude": 3.3792,
-            "accuracy": 10.0,
-            "emergency_category": "violence"
-        }
-        
-        response = self.make_request("POST", "/panic/activate", panic_data, expect_status=401)
-        
-        if response["success"]:
-            self.log_test(
-                "Panic Authentication Requirement",
-                True,
-                "Correctly requires authentication for panic activation",
-                response["data"]
-            )
-        else:
-            self.log_test(
-                "Panic Authentication Requirement",
-                False,
-                f"Should require authentication but got: {response['status_code']} - {response['data']}",
-                response['data']
-            )
-        
-        # Restore auth token
-        self.auth_token = temp_token
-
-    def test_authentication_endpoints(self):
-        """Test login and register endpoints work"""
-        print("\n=== TESTING AUTHENTICATION ENDPOINTS ===")
-        
-        # Test 1: Register endpoint (already tested in register_test_user, but verify again)
-        print("\n1. Testing register endpoint...")
-        test_email = f"authtest_{datetime.now().strftime('%Y%m%d_%H%M%S')}@gmail.com"
-        
-        user_data = {
-            "email": test_email,
-            "password": "TestPass123!",
-            "confirm_password": "TestPass123!",
-            "phone": "+2348123456789",
-            "role": "civil"
-        }
-        
-        response = self.make_request("POST", "/auth/register", user_data)
-        
-        if response["success"]:
-            self.log_test(
-                "Authentication - Register Endpoint",
-                True,
-                f"Successfully registered new user: {test_email}",
-                {"user_id": response["data"].get("user_id")}
-            )
-            
-            # Test 2: Login endpoint with the registered user
-            print("\n2. Testing login endpoint...")
-            login_data = {
-                "email": test_email,
-                "password": "TestPass123!"
-            }
-            
-            login_response = self.make_request("POST", "/auth/login", login_data)
-            
-            if login_response["success"]:
-                self.log_test(
-                    "Authentication - Login Endpoint",
-                    True,
-                    f"Successfully logged in user: {test_email}",
-                    {"token_received": bool(login_response["data"].get("token"))}
-                )
-            else:
-                self.log_test(
-                    "Authentication - Login Endpoint",
-                    False,
-                    f"Failed to login user: {login_response['data']}",
-                    login_response['data']
-                )
-        else:
-            self.log_test(
-                "Authentication - Register Endpoint",
-                False,
-                f"Failed to register user: {response['data']}",
-                response['data']
-            )
-
-    def test_panic_deactivation(self):
-        """Test panic deactivation endpoint"""
-        print("\n=== TESTING PANIC DEACTIVATION ===")
-        
-        # First activate a panic
-        print("\n1. Activating panic for deactivation test...")
-        panic_data = {
-            "latitude": 6.5244,
-            "longitude": 3.3792,
-            "accuracy": 10.0,
-            "emergency_category": "other"
-        }
-        
-        activate_response = self.make_request("POST", "/panic/activate", panic_data)
-        
-        if activate_response["success"]:
-            panic_id = activate_response["data"].get("panic_id")
-            print(f"   ✓ Panic activated with ID: {panic_id}")
-            
-            # Now test deactivation
-            print("\n2. Testing panic deactivation...")
-            deactivate_response = self.make_request("POST", "/panic/deactivate")
-            
-            if deactivate_response["success"]:
-                self.log_test(
-                    "Panic Deactivation",
-                    True,
-                    "Successfully deactivated panic",
-                    deactivate_response["data"]
-                )
-            else:
-                self.log_test(
-                    "Panic Deactivation",
-                    False,
-                    f"Failed to deactivate panic: {deactivate_response['data']}",
-                    deactivate_response['data']
-                )
-        else:
-            self.log_test(
-                "Panic Deactivation",
-                False,
-                f"Could not activate panic for deactivation test: {activate_response['data']}",
-                activate_response['data']
-            )
-
-    def test_reports_api(self):
-        """Test report creation endpoints"""
-        print("\n=== TESTING REPORTS API ===")
-        
-        # Test video report creation
-        print("\n1. Testing video report creation...")
-        video_report_data = {
-            "type": "video",
-            "caption": "Test video report from automated testing",
-            "is_anonymous": False,
-            "file_url": "https://example.com/test_video.mp4",
-            "thumbnail": "https://example.com/thumbnail.jpg",
-            "uploaded": True,
-            "latitude": 6.5244,
-            "longitude": 3.3792
-        }
-        
-        response = self.make_request("POST", "/report/create", video_report_data)
-        
-        if response["success"]:
-            report_id = response["data"].get("report_id")
-            self.log_test(
-                "Reports API - Video Report Creation",
-                True,
-                f"Successfully created video report with ID: {report_id}",
-                {"report_id": report_id, "type": "video"}
-            )
-        else:
-            self.log_test(
-                "Reports API - Video Report Creation",
-                False,
-                f"Failed to create video report: {response['data']}",
-                response['data']
-            )
-        
-        # Test audio report creation
-        print("\n2. Testing audio report creation...")
-        audio_report_data = {
-            "type": "audio",
-            "caption": "Test audio report from automated testing",
-            "is_anonymous": False,
-            "file_url": "https://example.com/test_audio.mp3",
-            "uploaded": True,
-            "latitude": 6.5244,
-            "longitude": 3.3792
-        }
-        
-        response = self.make_request("POST", "/report/create", audio_report_data)
-        
-        if response["success"]:
-            report_id = response["data"].get("report_id")
-            self.log_test(
-                "Reports API - Audio Report Creation",
-                True,
-                f"Successfully created audio report with ID: {report_id}",
-                {"report_id": report_id, "type": "audio"}
-            )
-        else:
-            self.log_test(
-                "Reports API - Audio Report Creation",
-                False,
-                f"Failed to create audio report: {response['data']}",
-                response['data']
-            )
-
-    def run_focused_tests(self):
-        """Run the specific tests requested in the review"""
-        print("🚀 Starting SafeGuard Backend API Tests - Comprehensive Review")
-        print(f"Backend URL: {API_BASE}")
-        print(f"Timestamp: {datetime.now().isoformat()}")
-        
-        # Register test user first
-        if not self.register_test_user():
-            print("❌ Failed to register test user. Cannot proceed with authenticated tests.")
-            return
-        
-        # Run all requested tests from the review
-        self.test_authentication_endpoints()
-        self.test_panic_activation_with_categories()
-        self.test_panic_deactivation()
-        self.test_reports_api()
-        self.test_push_token_registration()
-        self.test_panic_authentication_requirement()
-        
-        # Print summary
-        self.print_summary()
-
-    def print_summary(self):
-        """Print test summary"""
-        print("\n" + "="*80)
+        print("=" * 80)
         print("TEST SUMMARY")
-        print("="*80)
+        print("=" * 80)
+        print(f"Tests Passed: {passed}/{total}")
+        print(f"Success Rate: {(passed/total)*100:.1f}%")
         
-        total_tests = len(self.test_results)
-        passed_tests = sum(1 for result in self.test_results if result["success"])
-        failed_tests = total_tests - passed_tests
+        if passed == total:
+            print("🎉 ALL TESTS PASSED! Admin and enhanced security features are working correctly.")
+        else:
+            print("⚠️  Some tests failed. Check the details above.")
         
-        print(f"Total Tests: {total_tests}")
-        print(f"Passed: {passed_tests}")
-        print(f"Failed: {failed_tests}")
-        print(f"Success Rate: {(passed_tests/total_tests)*100:.1f}%")
-        
-        if failed_tests > 0:
-            print("\n❌ FAILED TESTS:")
-            for result in self.test_results:
-                if not result["success"]:
-                    print(f"  - {result['test']}: {result['details']}")
-        
-        print("\n✅ PASSED TESTS:")
-        for result in self.test_results:
-            if result["success"]:
-                print(f"  - {result['test']}: {result['details']}")
-        
-        print("="*80)
-
-def main():
-    """Main test runner"""
-    tester = SafeGuardAPITester()
-    tester.run_focused_tests()
+        print()
+        return passed == total
 
 if __name__ == "__main__":
-    main()
+    tester = SafeGuardAdminTester()
+    success = tester.run_all_tests()
+    exit(0 if success else 1)
