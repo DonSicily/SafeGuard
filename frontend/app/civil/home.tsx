@@ -212,6 +212,9 @@ const styles = StyleSheet.create({
   upgradeCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1E293B', padding: 20, borderRadius: 16, marginBottom: 24, borderWidth: 1, borderColor: '#FFD700' },
   upgradeTitle: { fontSize: 18, fontWeight: '600', color: '#FFD700', marginBottom: 4 },
   upgradeDescription: { fontSize: 14, color: '#94A3B8' },
+  pendingUploadsCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#1E293B', padding: 16, borderRadius: 16, marginBottom: 24, borderWidth: 1, borderColor: '#F59E0B' },
+  pendingBadge: { backgroundColor: '#F59E0B', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
+  pendingBadgeText: { color: '#fff', fontSize: 14, fontWeight: 'bold' },
   logoutButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16 },
   logoutText: { fontSize: 16, color: '#EF4444', fontWeight: '600' },
 });
