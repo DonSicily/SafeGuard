@@ -331,6 +331,173 @@ class SafeGuardAPITester:
         # Restore auth token
         self.auth_token = temp_token
 
+    def test_authentication_endpoints(self):
+        """Test login and register endpoints work"""
+        print("\n=== TESTING AUTHENTICATION ENDPOINTS ===")
+        
+        # Test 1: Register endpoint (already tested in register_test_user, but verify again)
+        print("\n1. Testing register endpoint...")
+        test_email = f"authtest_{datetime.now().strftime('%Y%m%d_%H%M%S')}@gmail.com"
+        
+        user_data = {
+            "email": test_email,
+            "password": "TestPass123!",
+            "confirm_password": "TestPass123!",
+            "phone": "+2348123456789",
+            "role": "civil"
+        }
+        
+        response = self.make_request("POST", "/auth/register", user_data)
+        
+        if response["success"]:
+            self.log_test(
+                "Authentication - Register Endpoint",
+                True,
+                f"Successfully registered new user: {test_email}",
+                {"user_id": response["data"].get("user_id")}
+            )
+            
+            # Test 2: Login endpoint with the registered user
+            print("\n2. Testing login endpoint...")
+            login_data = {
+                "email": test_email,
+                "password": "TestPass123!"
+            }
+            
+            login_response = self.make_request("POST", "/auth/login", login_data)
+            
+            if login_response["success"]:
+                self.log_test(
+                    "Authentication - Login Endpoint",
+                    True,
+                    f"Successfully logged in user: {test_email}",
+                    {"token_received": bool(login_response["data"].get("token"))}
+                )
+            else:
+                self.log_test(
+                    "Authentication - Login Endpoint",
+                    False,
+                    f"Failed to login user: {login_response['data']}",
+                    login_response['data']
+                )
+        else:
+            self.log_test(
+                "Authentication - Register Endpoint",
+                False,
+                f"Failed to register user: {response['data']}",
+                response['data']
+            )
+
+    def test_panic_deactivation(self):
+        """Test panic deactivation endpoint"""
+        print("\n=== TESTING PANIC DEACTIVATION ===")
+        
+        # First activate a panic
+        print("\n1. Activating panic for deactivation test...")
+        panic_data = {
+            "latitude": 6.5244,
+            "longitude": 3.3792,
+            "accuracy": 10.0,
+            "emergency_category": "other"
+        }
+        
+        activate_response = self.make_request("POST", "/panic/activate", panic_data)
+        
+        if activate_response["success"]:
+            panic_id = activate_response["data"].get("panic_id")
+            print(f"   ✓ Panic activated with ID: {panic_id}")
+            
+            # Now test deactivation
+            print("\n2. Testing panic deactivation...")
+            deactivate_response = self.make_request("POST", "/panic/deactivate")
+            
+            if deactivate_response["success"]:
+                self.log_test(
+                    "Panic Deactivation",
+                    True,
+                    "Successfully deactivated panic",
+                    deactivate_response["data"]
+                )
+            else:
+                self.log_test(
+                    "Panic Deactivation",
+                    False,
+                    f"Failed to deactivate panic: {deactivate_response['data']}",
+                    deactivate_response['data']
+                )
+        else:
+            self.log_test(
+                "Panic Deactivation",
+                False,
+                f"Could not activate panic for deactivation test: {activate_response['data']}",
+                activate_response['data']
+            )
+
+    def test_reports_api(self):
+        """Test report creation endpoints"""
+        print("\n=== TESTING REPORTS API ===")
+        
+        # Test video report creation
+        print("\n1. Testing video report creation...")
+        video_report_data = {
+            "type": "video",
+            "caption": "Test video report from automated testing",
+            "is_anonymous": False,
+            "file_url": "https://example.com/test_video.mp4",
+            "thumbnail": "https://example.com/thumbnail.jpg",
+            "uploaded": True,
+            "latitude": 6.5244,
+            "longitude": 3.3792
+        }
+        
+        response = self.make_request("POST", "/report/create", video_report_data)
+        
+        if response["success"]:
+            report_id = response["data"].get("report_id")
+            self.log_test(
+                "Reports API - Video Report Creation",
+                True,
+                f"Successfully created video report with ID: {report_id}",
+                {"report_id": report_id, "type": "video"}
+            )
+        else:
+            self.log_test(
+                "Reports API - Video Report Creation",
+                False,
+                f"Failed to create video report: {response['data']}",
+                response['data']
+            )
+        
+        # Test audio report creation
+        print("\n2. Testing audio report creation...")
+        audio_report_data = {
+            "type": "audio",
+            "caption": "Test audio report from automated testing",
+            "is_anonymous": False,
+            "file_url": "https://example.com/test_audio.mp3",
+            "uploaded": True,
+            "latitude": 6.5244,
+            "longitude": 3.3792
+        }
+        
+        response = self.make_request("POST", "/report/create", audio_report_data)
+        
+        if response["success"]:
+            report_id = response["data"].get("report_id")
+            self.log_test(
+                "Reports API - Audio Report Creation",
+                True,
+                f"Successfully created audio report with ID: {report_id}",
+                {"report_id": report_id, "type": "audio"}
+            )
+        else:
+            self.log_test(
+                "Reports API - Audio Report Creation",
+                False,
+                f"Failed to create audio report: {response['data']}",
+                response['data']
+            )
+
     def run_focused_tests(self):
         """Run the specific tests requested in the review"""
         print("🚀 Starting SafeGuard Backend API Tests - Push Token & Panic Category Focus")
