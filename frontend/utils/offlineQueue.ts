@@ -221,7 +221,7 @@ export async function processQueue(): Promise<{ success: number; failed: number 
  * Subscribe to network changes and auto-process queue
  */
 export function startQueueProcessor(): () => void {
-  let processingTimeout: NodeJS.Timeout | null = null;
+  let processingTimeout: ReturnType<typeof setTimeout> | null = null;
 
   const unsubscribe = NetInfo.addEventListener(state => {
     if (state.isConnected && state.isInternetReachable) {
