@@ -363,6 +363,30 @@ backend:
           agent: "testing"
           comment: "✅ Payment verification working. Successfully upgrades users to premium status (Paystack integration **mocked**)"
 
+  - task: "Push Token Registration API"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "testing"
+          comment: "✅ Push token registration working correctly. Successfully validates Expo push token format 'ExponentPushToken[xxxxx]', rejects invalid formats, and requires authentication. All validation tests passed."
+
+  - task: "Panic Activation with Emergency Categories"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "testing"
+          comment: "✅ Panic activation with emergency categories working perfectly. Successfully tested all categories: violence, robbery, kidnapping, medical, fire, other. Categories are correctly stored in panic events and used in push notifications. Default category 'other' applied when not specified. Database verification confirms proper category storage."
+
 frontend:
   # Frontend testing not performed by testing agent
 
