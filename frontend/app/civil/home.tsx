@@ -4,18 +4,54 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getPendingCount, processQueue } from '../../utils/offlineQueue';
 
 export default function CivilHome() {
   const router = useRouter();
   const [isPremium, setIsPremium] = useState(false);
+  const [pendingUploads, setPendingUploads] = useState(0);
 
   useEffect(() => {
     checkPremiumStatus();
+    checkPendingUploads();
+    
+    // Check pending uploads periodically
+    const interval = setInterval(checkPendingUploads, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   const checkPremiumStatus = async () => {
     const premium = await AsyncStorage.getItem('is_premium');
     setIsPremium(premium === 'true');
+  };
+
+  const checkPendingUploads = async () => {
+    const count = await getPendingCount();
+    setPendingUploads(count);
+  };
+
+  const handleRetryUploads = async () => {
+    Alert.alert(
+      'Retry Uploads',
+      `${pendingUploads} report(s) are waiting to be uploaded. Would you like to retry now?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Retry Now', 
+          onPress: async () => {
+            const result = await processQueue();
+            if (result.success > 0) {
+              Alert.alert('Success', `${result.success} report(s) uploaded successfully!`);
+            } else if (result.failed > 0) {
+              Alert.alert('Upload Failed', `${result.failed} report(s) failed. Will retry automatically when connection improves.`);
+            } else {
+              Alert.alert('Offline', 'No internet connection. Reports will upload automatically when you\'re back online.');
+            }
+            checkPendingUploads();
+          }
+        }
+      ]
+    );
   };
 
   const handleLogout = async () => {
