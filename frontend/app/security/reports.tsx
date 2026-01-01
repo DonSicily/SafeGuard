@@ -22,6 +22,60 @@ export default function SecurityReports() {
     return () => clearInterval(interval);
   }, []);
 
+  // Cleanup audio on unmount
+  useEffect(() => {
+    return sound
+      ? () => {
+          sound.unloadAsync();
+        }
+      : undefined;
+  }, [sound]);
+
+  const playAudio = async (audioUrl: string, reportId: string) => {
+    try {
+      // Stop current audio if playing
+      if (sound) {
+        await sound.unloadAsync();
+        setSound(null);
+        if (playingId === reportId) {
+          setPlayingId(null);
+          return;
+        }
+      }
+
+      // Configure audio mode
+      await Audio.setAudioModeAsync({
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: false,
+      });
+
+      console.log('Loading audio from:', audioUrl);
+
+      // Load and play
+      const { sound: newSound } = await Audio.Sound.createAsync(
+        { uri: audioUrl },
+        { shouldPlay: true }
+      );
+
+      setSound(newSound);
+      setPlayingId(reportId);
+
+      // Handle playback finished
+      newSound.setOnPlaybackStatusUpdate((status: any) => {
+        if (status.isLoaded && status.didJustFinish) {
+          setPlayingId(null);
+          newSound.unloadAsync();
+          setSound(null);
+        }
+      });
+
+      console.log('Audio playing:', reportId);
+    } catch (error: any) {
+      console.error('Audio playback error:', error);
+      Alert.alert('Playback Error', 'Unable to play audio file. ' + error.message);
+    }
+  };
+
   const loadReports = async () => {
     try {
       const token = await AsyncStorage.getItem('auth_token');
