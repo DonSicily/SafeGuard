@@ -922,7 +922,51 @@ logger = logging.getLogger(__name__)
 @app.on_event("startup")
 async def startup():
     await create_indexes()
-    logger.info("MongoDB indexes created")
+    await create_default_admins()
+    await create_default_invite_codes()
+    logger.info("MongoDB indexes created and default admins initialized")
+
+async def create_default_admins():
+    """Create 5 default admin accounts if they don't exist"""
+    default_admins = [
+        {"email": "admin1@safeguard.com", "password": "Admin123!", "full_name": "Admin One"},
+        {"email": "admin2@safeguard.com", "password": "Admin123!", "full_name": "Admin Two"},
+        {"email": "admin3@safeguard.com", "password": "Admin123!", "full_name": "Admin Three"},
+        {"email": "admin4@safeguard.com", "password": "Admin123!", "full_name": "Admin Four"},
+        {"email": "admin5@safeguard.com", "password": "Admin123!", "full_name": "Admin Five"},
+    ]
+    
+    for admin in default_admins:
+        existing = await db.users.find_one({"email": admin["email"]})
+        if not existing:
+            await db.users.insert_one({
+                "email": admin["email"],
+                "password_hash": hash_password(admin["password"]),
+                "full_name": admin["full_name"],
+                "role": "admin",
+                "is_active": True,
+                "created_at": datetime.utcnow()
+            })
+            logger.info(f"Created admin account: {admin['email']}")
+
+async def create_default_invite_codes():
+    """Create default invite codes for security registration"""
+    default_codes = [
+        {"code": "SECURITY2025", "max_uses": 100, "used_count": 0},
+        {"code": "SAFEGUARD-TEAM", "max_uses": 50, "used_count": 0},
+        {"code": "SUPERVISOR-ACCESS", "max_uses": 20, "used_count": 0},
+    ]
+    
+    for code_data in default_codes:
+        existing = await db.invite_codes.find_one({"code": code_data["code"]})
+        if not existing:
+            await db.invite_codes.insert_one({
+                **code_data,
+                "created_at": datetime.utcnow(),
+                "expires_at": datetime.utcnow() + timedelta(days=365),
+                "is_active": True
+            })
+            logger.info(f"Created invite code: {code_data['code']}")
 
 @app.on_event("shutdown")
 async def shutdown():
