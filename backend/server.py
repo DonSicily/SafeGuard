@@ -61,6 +61,7 @@ class LocationPoint(BaseModel):
     longitude: float
     accuracy: Optional[float] = None
     timestamp: datetime = Field(default_factory=datetime.utcnow)
+    emergency_category: Optional[str] = None  # For panic events: violence, robbery, kidnapping, etc.
 
 class SetTeamLocation(BaseModel):
     latitude: float
