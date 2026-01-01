@@ -8,6 +8,7 @@ import {
   addNotificationResponseListener,
   NotificationData 
 } from '../utils/notifications';
+import { startQueueProcessor } from '../utils/offlineQueue';
 
 export default function RootLayout() {
   const router = useRouter();
@@ -15,6 +16,9 @@ export default function RootLayout() {
   const responseListener = useRef<any>();
 
   useEffect(() => {
+    // Start offline queue processor
+    const stopQueueProcessor = startQueueProcessor();
+
     // Listen for notifications received while app is foregrounded
     notificationListener.current = addNotificationReceivedListener((notification) => {
       const data = notification.request.content.data as NotificationData;
@@ -47,6 +51,7 @@ export default function RootLayout() {
     });
 
     return () => {
+      stopQueueProcessor();
       if (notificationListener.current) {
         Notifications.removeNotificationSubscription(notificationListener.current);
       }
