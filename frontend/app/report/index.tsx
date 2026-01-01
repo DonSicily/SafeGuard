@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, TextInput, Alert, ActivityIndicator, Switch, Platform } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, TextInput, Alert, ActivityIndicator, Switch, Platform, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,6 +9,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+const MIN_RECORDING_DURATION = 2; // Minimum 2 seconds recording
 
 export default function Report() {
   const router = useRouter();
@@ -22,16 +23,32 @@ export default function Report() {
   const [location, setLocation] = useState<any>(null);
   const [recordingStartTime, setRecordingStartTime] = useState<number | null>(null);
   const [recordingDuration, setRecordingDuration] = useState(0);
-  const recordingPromiseRef = React.useRef<Promise<any> | null>(null);
+  const [cameraReady, setCameraReady] = useState(false);
+  const recordingPromiseRef = useRef<Promise<any> | null>(null);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  // Pulse animation for recording indicator
+  useEffect(() => {
+    if (isRecording) {
+      const pulse = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 1.3, duration: 500, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
+        ])
+      );
+      pulse.start();
+      return () => pulse.stop();
+    }
+  }, [isRecording]);
 
   // Timer effect for recording duration display
-  React.useEffect(() => {
+  useEffect(() => {
     let interval: any;
     if (isRecording && recordingStartTime) {
       interval = setInterval(() => {
         const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
         setRecordingDuration(elapsed);
-      }, 100); // Update every 100ms for smooth display
+      }, 100);
     } else {
       setRecordingDuration(0);
     }
@@ -40,7 +57,7 @@ export default function Report() {
     };
   }, [isRecording, recordingStartTime]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     requestPermissions();
   }, []);
 
