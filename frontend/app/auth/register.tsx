@@ -13,10 +13,13 @@ export default function Register() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [fullName, setFullName] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [role, setRole] = useState('civil');
   const [inviteCode, setInviteCode] = useState('');
+  const [securitySubRole, setSecuritySubRole] = useState('team_member');
+  const [teamName, setTeamName] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
@@ -41,10 +44,13 @@ export default function Register() {
       const response = await axios.post(`${BACKEND_URL}/api/auth/register`, {
         email,
         phone: phone || null,
+        full_name: fullName || null,
         password,
         confirm_password: confirmPassword,
         role,
-        invite_code: inviteCode || null
+        invite_code: inviteCode || null,
+        security_sub_role: role === 'security' ? securitySubRole : null,
+        team_name: role === 'security' ? teamName : null
       });
 
       await AsyncStorage.setItem('auth_token', response.data.token);
