@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Comprehensive Backend API Test Suite for SafeGuard Security App
-Tests the two-tier system (Civil vs Security users) with full API coverage
+SafeGuard Backend API Testing - Focus on Push Token Registration and Panic Category
+Testing specific features as requested in review.
 """
 
 import requests
