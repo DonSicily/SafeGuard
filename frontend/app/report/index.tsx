@@ -102,9 +102,14 @@ export default function Report() {
     }
   };
 
-  const startRecording = () => {
+  const startRecording = async () => {
     if (!cameraRef) {
-      Alert.alert('Error', 'Camera not ready');
+      Alert.alert('Error', 'Camera not ready. Please wait.');
+      return;
+    }
+
+    if (!cameraReady) {
+      Alert.alert('Please Wait', 'Camera is still initializing...');
       return;
     }
 
@@ -112,44 +117,68 @@ export default function Report() {
     setIsRecording(true);
     setRecordingStartTime(Date.now());
     
-    // Start recording and handle promise separately
-    recordingPromiseRef.current = cameraRef.recordAsync({ 
-      maxDuration: 300,
-      quality: '720p'
-    });
-    
-    // Handle the promise completion
-    recordingPromiseRef.current
-      .then((video: any) => {
-        console.log('Recording promise resolved with video:', video);
-        if (video && video.uri) {
-          setRecordingUri(video.uri);
-          const duration = recordingStartTime ? (Date.now() - recordingStartTime) / 1000 : 0;
-          console.log('Video saved successfully, duration:', duration);
-          Alert.alert('Success', `Video recorded (${Math.round(duration)}s)`);
-        }
-        setIsRecording(false);
-        setRecordingStartTime(null);
-        recordingPromiseRef.current = null;
-      })
-      .catch((error: any) => {
-        console.log('Recording promise rejected:', error.message);
-        // Don't treat stop as an error
-        if (!error.message.toLowerCase().includes('stopped') && 
-            !error.message.toLowerCase().includes('abort')) {
-          Alert.alert('Recording Error', error.message);
-        }
-        setIsRecording(false);
-        setRecordingStartTime(null);
-        recordingPromiseRef.current = null;
+    try {
+      // Start recording and handle promise separately
+      recordingPromiseRef.current = cameraRef.recordAsync({ 
+        maxDuration: 300, // 5 minutes max
+        quality: '720p'
       });
+      
+      // Handle the promise completion
+      const video = await recordingPromiseRef.current;
+      
+      console.log('Recording completed:', video);
+      if (video && video.uri) {
+        setRecordingUri(video.uri);
+        const finalDuration = recordingStartTime ? Math.round((Date.now() - recordingStartTime) / 1000) : recordingDuration;
+        console.log('Video saved successfully, duration:', finalDuration);
+        Alert.alert('Video Recorded', `Recording saved (${formatDuration(finalDuration)})`);
+      }
+    } catch (error: any) {
+      console.log('Recording error/stop:', error?.message);
+      // Check if video was saved despite error (common on stop)
+      if (error?.message?.toLowerCase().includes('stopped') || 
+          error?.message?.toLowerCase().includes('abort') ||
+          error?.message?.toLowerCase().includes('cancel')) {
+        // Recording was manually stopped - this is expected
+        console.log('Recording was stopped by user');
+      } else {
+        Alert.alert('Recording Error', error?.message || 'Unknown error occurred');
+      }
+    } finally {
+      setIsRecording(false);
+      setRecordingStartTime(null);
+      recordingPromiseRef.current = null;
+    }
   };
 
   const stopRecording = () => {
-    if (cameraRef && isRecording && recordingPromiseRef.current) {
-      console.log('User clicked stop, stopping recording...');
+    if (!isRecording) return;
+    
+    // Check minimum recording duration
+    if (recordingDuration < MIN_RECORDING_DURATION) {
+      Alert.alert(
+        'Recording Too Short', 
+        `Please record for at least ${MIN_RECORDING_DURATION} seconds. Current: ${recordingDuration}s`
+      );
+      return;
+    }
+
+    if (cameraRef && recordingPromiseRef.current) {
+      console.log('User clicked stop after', recordingDuration, 'seconds');
       cameraRef.stopRecording();
     }
+  };
+
+  const formatDuration = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const onCameraReady = () => {
+    console.log('Camera is ready');
+    setCameraReady(true);
   };
 
   const submitReport = async () => {
