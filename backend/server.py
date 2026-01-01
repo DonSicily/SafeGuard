@@ -43,10 +43,17 @@ class UserRegister(BaseModel):
     password: str
     confirm_password: str
     phone: Optional[str] = None
+    full_name: Optional[str] = None
     role: str = "civil"  # "civil" or "security"
     invite_code: Optional[str] = None  # Required for security role
+    security_sub_role: Optional[str] = None  # "supervisor" or "team_member" for security
+    team_name: Optional[str] = None  # Optional team name for security
 
 class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+class AdminLogin(BaseModel):
     email: EmailStr
     password: str
 
@@ -84,6 +91,29 @@ class UserSearch(BaseModel):
 class AppCustomization(BaseModel):
     app_name: str
     app_logo: str
+
+class UpdateLocation(BaseModel):
+    latitude: float
+    longitude: float
+    accuracy: Optional[float] = None
+
+class UpdateStatus(BaseModel):
+    status: str  # "available", "busy", "responding", "offline"
+
+class UpdateSecuritySettings(BaseModel):
+    visibility_radius_km: Optional[int] = None
+    status: Optional[str] = None
+    is_visible: Optional[bool] = None
+
+class SendMessage(BaseModel):
+    to_user_id: str
+    content: str
+    message_type: str = "text"  # "text", "image", "location", "voice"
+
+class CreateInviteCode(BaseModel):
+    code: Optional[str] = None  # Auto-generate if not provided
+    max_uses: int = 10
+    expires_days: int = 30
 
 # ===== HELPER FUNCTIONS =====
 def hash_password(password: str) -> str:
