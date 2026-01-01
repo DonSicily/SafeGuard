@@ -905,6 +905,540 @@ async def verify_payment(reference: str, user = Depends(get_current_user)):
         logging.error(f"Payment verification error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# ===== ADMIN ROUTES =====
+
+async def get_admin_user(authorization: Optional[str] = Header(None)):
+    """Verify user is an admin"""
+    user = await get_current_user(authorization)
+    if user.get('role') != 'admin':
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
+@api_router.post("/admin/login")
+async def admin_login(login_data: AdminLogin):
+    """Admin login endpoint"""
+    user = await db.users.find_one({'email': login_data.email, 'role': 'admin'})
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid admin credentials")
+    
+    if not verify_password(login_data.password, user['password_hash']):
+        raise HTTPException(status_code=401, detail="Invalid admin credentials")
+    
+    if not user.get('is_active', True):
+        raise HTTPException(status_code=403, detail="Admin account is deactivated")
+    
+    token = create_token(str(user['_id']), user['email'], 'admin')
+    
+    return {
+        'token': token,
+        'user_id': str(user['_id']),
+        'email': user['email'],
+        'full_name': user.get('full_name', ''),
+        'role': 'admin'
+    }
+
+@api_router.get("/admin/dashboard")
+async def admin_dashboard(user: dict = Depends(get_admin_user)):
+    """Get admin dashboard statistics"""
+    total_users = await db.users.count_documents({})
+    civil_users = await db.users.count_documents({'role': 'civil'})
+    security_users = await db.users.count_documents({'role': 'security'})
+    admin_users = await db.users.count_documents({'role': 'admin'})
+    
+    active_panics = await db.panic_events.count_documents({'is_active': True})
+    total_panics = await db.panic_events.count_documents({})
+    total_reports = await db.civil_reports.count_documents({})
+    
+    # Recent activity (last 24 hours)
+    yesterday = datetime.utcnow() - timedelta(hours=24)
+    recent_panics = await db.panic_events.count_documents({'activated_at': {'$gte': yesterday}})
+    recent_reports = await db.civil_reports.count_documents({'created_at': {'$gte': yesterday}})
+    new_users = await db.users.count_documents({'created_at': {'$gte': yesterday}})
+    
+    return {
+        'total_users': total_users,
+        'civil_users': civil_users,
+        'security_users': security_users,
+        'admin_users': admin_users,
+        'active_panics': active_panics,
+        'total_panics': total_panics,
+        'total_reports': total_reports,
+        'recent_24h': {
+            'panics': recent_panics,
+            'reports': recent_reports,
+            'new_users': new_users
+        }
+    }
+
+@api_router.get("/admin/users")
+async def admin_get_users(
+    role: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 50,
+    user: dict = Depends(get_admin_user)
+):
+    """Get all users with optional role filter"""
+    query = {}
+    if role:
+        query['role'] = role
+    
+    users = await db.users.find(query).skip(skip).limit(limit).to_list(length=limit)
+    total = await db.users.count_documents(query)
+    
+    return {
+        'users': [{
+            'id': str(u['_id']),
+            'email': u.get('email'),
+            'full_name': u.get('full_name', ''),
+            'phone': u.get('phone', ''),
+            'role': u.get('role'),
+            'security_sub_role': u.get('security_sub_role'),
+            'team_name': u.get('team_name', ''),
+            'is_active': u.get('is_active', True),
+            'is_premium': u.get('is_premium', False),
+            'status': u.get('status', 'offline'),
+            'created_at': u.get('created_at', datetime.utcnow()).isoformat()
+        } for u in users],
+        'total': total,
+        'skip': skip,
+        'limit': limit
+    }
+
+@api_router.put("/admin/users/{user_id}/toggle")
+async def admin_toggle_user(user_id: str, user: dict = Depends(get_admin_user)):
+    """Activate/deactivate a user"""
+    target_user = await db.users.find_one({'_id': ObjectId(user_id)})
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    new_status = not target_user.get('is_active', True)
+    await db.users.update_one(
+        {'_id': ObjectId(user_id)},
+        {'$set': {'is_active': new_status}}
+    )
+    
+    return {'message': f"User {'activated' if new_status else 'deactivated'}", 'is_active': new_status}
+
+@api_router.delete("/admin/users/{user_id}")
+async def admin_delete_user(user_id: str, user: dict = Depends(get_admin_user)):
+    """Delete a user (soft delete by deactivating)"""
+    result = await db.users.update_one(
+        {'_id': ObjectId(user_id)},
+        {'$set': {'is_active': False, 'deleted_at': datetime.utcnow()}}
+    )
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {'message': 'User deleted successfully'}
+
+@api_router.get("/admin/security-map")
+async def admin_security_map(user: dict = Depends(get_admin_user)):
+    """Get all security users with their locations for map display"""
+    security_users = await db.users.find({
+        'role': 'security',
+        'is_active': True,
+        'current_location': {'$exists': True}
+    }).to_list(length=500)
+    
+    return {
+        'security_users': [{
+            'id': str(u['_id']),
+            'full_name': u.get('full_name', u.get('email', 'Unknown')),
+            'email': u.get('email'),
+            'security_sub_role': u.get('security_sub_role', 'team_member'),
+            'team_name': u.get('team_name', ''),
+            'status': u.get('status', 'offline'),
+            'location': u.get('current_location'),
+            'last_location_update': u.get('last_location_update', datetime.utcnow()).isoformat()
+        } for u in security_users]
+    }
+
+@api_router.get("/admin/all-panics")
+async def admin_all_panics(
+    active_only: bool = False,
+    skip: int = 0,
+    limit: int = 50,
+    user: dict = Depends(get_admin_user)
+):
+    """Get all panic events"""
+    query = {'is_active': True} if active_only else {}
+    panics = await db.panic_events.find(query).sort('activated_at', -1).skip(skip).limit(limit).to_list(length=limit)
+    total = await db.panic_events.count_documents(query)
+    
+    return {
+        'panics': [{
+            'id': str(p['_id']),
+            'user_id': p.get('user_id'),
+            'is_active': p.get('is_active'),
+            'emergency_category': p.get('emergency_category', 'other'),
+            'location': p.get('location'),
+            'activated_at': p.get('activated_at', datetime.utcnow()).isoformat(),
+            'deactivated_at': p.get('deactivated_at').isoformat() if p.get('deactivated_at') else None
+        } for p in panics],
+        'total': total
+    }
+
+@api_router.get("/admin/all-reports")
+async def admin_all_reports(
+    report_type: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 50,
+    user: dict = Depends(get_admin_user)
+):
+    """Get all reports"""
+    query = {}
+    if report_type:
+        query['type'] = report_type
+    
+    reports = await db.civil_reports.find(query).sort('created_at', -1).skip(skip).limit(limit).to_list(length=limit)
+    total = await db.civil_reports.count_documents(query)
+    
+    return {
+        'reports': [{
+            'id': str(r['_id']),
+            'user_id': r.get('user_id'),
+            'type': r.get('type'),
+            'caption': r.get('caption', ''),
+            'is_anonymous': r.get('is_anonymous', False),
+            'file_url': r.get('file_url'),
+            'location': r.get('location'),
+            'created_at': r.get('created_at', datetime.utcnow()).isoformat()
+        } for r in reports],
+        'total': total
+    }
+
+@api_router.post("/admin/invite-codes")
+async def admin_create_invite_code(code_data: CreateInviteCode, user: dict = Depends(get_admin_user)):
+    """Create a new invite code for security registration"""
+    code = code_data.code or f"SG-{uuid.uuid4().hex[:8].upper()}"
+    
+    existing = await db.invite_codes.find_one({'code': code})
+    if existing:
+        raise HTTPException(status_code=400, detail="Code already exists")
+    
+    invite = {
+        'code': code,
+        'max_uses': code_data.max_uses,
+        'used_count': 0,
+        'created_by': str(user['_id']),
+        'created_at': datetime.utcnow(),
+        'expires_at': datetime.utcnow() + timedelta(days=code_data.expires_days),
+        'is_active': True
+    }
+    
+    await db.invite_codes.insert_one(invite)
+    return {'code': code, 'message': 'Invite code created successfully'}
+
+@api_router.get("/admin/invite-codes")
+async def admin_list_invite_codes(user: dict = Depends(get_admin_user)):
+    """List all invite codes"""
+    codes = await db.invite_codes.find().sort('created_at', -1).to_list(length=100)
+    return {
+        'codes': [{
+            'id': str(c['_id']),
+            'code': c['code'],
+            'max_uses': c.get('max_uses', 10),
+            'used_count': c.get('used_count', 0),
+            'is_active': c.get('is_active', True),
+            'expires_at': c.get('expires_at', datetime.utcnow()).isoformat(),
+            'created_at': c.get('created_at', datetime.utcnow()).isoformat()
+        } for c in codes]
+    }
+
+# ===== SECURITY USER ENHANCED ROUTES =====
+
+@api_router.post("/security/update-location")
+async def security_update_location(location: UpdateLocation, user: dict = Depends(get_current_user)):
+    """Manually update security user's location"""
+    if user.get('role') != 'security':
+        raise HTTPException(status_code=403, detail="Security users only")
+    
+    await db.users.update_one(
+        {'_id': user['_id']},
+        {'$set': {
+            'current_location': {
+                'type': 'Point',
+                'coordinates': [location.longitude, location.latitude]
+            },
+            'last_location_update': datetime.utcnow()
+        }}
+    )
+    
+    return {'message': 'Location updated successfully', 'timestamp': datetime.utcnow().isoformat()}
+
+@api_router.put("/security/status")
+async def security_update_status(status_data: UpdateStatus, user: dict = Depends(get_current_user)):
+    """Update security user's status"""
+    if user.get('role') != 'security':
+        raise HTTPException(status_code=403, detail="Security users only")
+    
+    valid_statuses = ['available', 'busy', 'responding', 'offline']
+    if status_data.status not in valid_statuses:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {valid_statuses}")
+    
+    await db.users.update_one(
+        {'_id': user['_id']},
+        {'$set': {'status': status_data.status, 'status_updated_at': datetime.utcnow()}}
+    )
+    
+    return {'message': 'Status updated', 'status': status_data.status}
+
+@api_router.put("/security/settings")
+async def security_update_settings(settings: UpdateSecuritySettings, user: dict = Depends(get_current_user)):
+    """Update security user's settings (radius, visibility)"""
+    if user.get('role') != 'security':
+        raise HTTPException(status_code=403, detail="Security users only")
+    
+    update_data = {}
+    if settings.visibility_radius_km is not None:
+        update_data['visibility_radius_km'] = settings.visibility_radius_km
+    if settings.status is not None:
+        update_data['status'] = settings.status
+    if settings.is_visible is not None:
+        update_data['is_visible'] = settings.is_visible
+    
+    if update_data:
+        await db.users.update_one({'_id': user['_id']}, {'$set': update_data})
+    
+    return {'message': 'Settings updated', 'updated': update_data}
+
+@api_router.get("/security/nearby")
+async def security_get_nearby(user: dict = Depends(get_current_user)):
+    """Get nearby security users within the user's set radius"""
+    if user.get('role') != 'security':
+        raise HTTPException(status_code=403, detail="Security users only")
+    
+    user_location = user.get('current_location')
+    if not user_location:
+        raise HTTPException(status_code=400, detail="Please update your location first")
+    
+    radius_km = user.get('visibility_radius_km', 25)  # Default 25km
+    
+    # Find nearby security users
+    nearby = await db.users.find({
+        'role': 'security',
+        'is_active': True,
+        'is_visible': {'$ne': False},  # Include if not explicitly hidden
+        '_id': {'$ne': user['_id']},  # Exclude self
+        'current_location': {
+            '$near': {
+                '$geometry': user_location,
+                '$maxDistance': radius_km * 1000  # Convert to meters
+            }
+        }
+    }).to_list(length=100)
+    
+    return {
+        'nearby_users': [{
+            'id': str(u['_id']),
+            'full_name': u.get('full_name', u.get('email', 'Unknown')),
+            'security_sub_role': u.get('security_sub_role', 'team_member'),
+            'team_name': u.get('team_name', ''),
+            'status': u.get('status', 'offline'),
+            'location': u.get('current_location'),
+            'last_location_update': u.get('last_location_update', datetime.utcnow()).isoformat()
+        } for u in nearby],
+        'your_radius_km': radius_km,
+        'your_location': user_location
+    }
+
+@api_router.get("/security/profile")
+async def security_get_profile(user: dict = Depends(get_current_user)):
+    """Get security user's full profile"""
+    if user.get('role') != 'security':
+        raise HTTPException(status_code=403, detail="Security users only")
+    
+    return {
+        'id': str(user['_id']),
+        'email': user.get('email'),
+        'full_name': user.get('full_name', ''),
+        'phone': user.get('phone', ''),
+        'security_sub_role': user.get('security_sub_role', 'team_member'),
+        'team_name': user.get('team_name', ''),
+        'status': user.get('status', 'available'),
+        'visibility_radius_km': user.get('visibility_radius_km', 25),
+        'is_visible': user.get('is_visible', True),
+        'current_location': user.get('current_location'),
+        'last_location_update': user.get('last_location_update').isoformat() if user.get('last_location_update') else None
+    }
+
+# ===== CHAT & MESSAGING ROUTES =====
+
+@api_router.get("/chat/conversations")
+async def get_conversations(user: dict = Depends(get_current_user)):
+    """Get all conversations for the current user"""
+    user_id = str(user['_id'])
+    
+    conversations = await db.conversations.find({
+        '$or': [
+            {'participant_1': user_id},
+            {'participant_2': user_id}
+        ]
+    }).sort('last_message_at', -1).to_list(length=50)
+    
+    result = []
+    for conv in conversations:
+        other_id = conv['participant_2'] if conv['participant_1'] == user_id else conv['participant_1']
+        other_user = await db.users.find_one({'_id': ObjectId(other_id)})
+        
+        result.append({
+            'id': str(conv['_id']),
+            'other_user': {
+                'id': other_id,
+                'full_name': other_user.get('full_name', other_user.get('email', 'Unknown')) if other_user else 'Unknown',
+                'security_sub_role': other_user.get('security_sub_role') if other_user else None,
+                'status': other_user.get('status', 'offline') if other_user else 'offline'
+            },
+            'last_message': conv.get('last_message'),
+            'last_message_at': conv.get('last_message_at', datetime.utcnow()).isoformat(),
+            'unread_count': conv.get(f'unread_{user_id}', 0)
+        })
+    
+    return {'conversations': result}
+
+@api_router.post("/chat/start")
+async def start_conversation(to_user_id: str = Body(..., embed=True), user: dict = Depends(get_current_user)):
+    """Start a new conversation or get existing one"""
+    user_id = str(user['_id'])
+    
+    # Check if conversation already exists
+    existing = await db.conversations.find_one({
+        '$or': [
+            {'participant_1': user_id, 'participant_2': to_user_id},
+            {'participant_1': to_user_id, 'participant_2': user_id}
+        ]
+    })
+    
+    if existing:
+        return {'conversation_id': str(existing['_id']), 'existing': True}
+    
+    # Create new conversation
+    conv = {
+        'participant_1': user_id,
+        'participant_2': to_user_id,
+        'created_at': datetime.utcnow(),
+        'last_message_at': datetime.utcnow(),
+        f'unread_{user_id}': 0,
+        f'unread_{to_user_id}': 0
+    }
+    result = await db.conversations.insert_one(conv)
+    
+    return {'conversation_id': str(result.inserted_id), 'existing': False}
+
+@api_router.get("/chat/{conversation_id}/messages")
+async def get_messages(conversation_id: str, skip: int = 0, limit: int = 50, user: dict = Depends(get_current_user)):
+    """Get messages in a conversation"""
+    user_id = str(user['_id'])
+    
+    # Verify user is part of conversation
+    conv = await db.conversations.find_one({'_id': ObjectId(conversation_id)})
+    if not conv or (conv['participant_1'] != user_id and conv['participant_2'] != user_id):
+        raise HTTPException(status_code=403, detail="Not authorized to view this conversation")
+    
+    # Mark messages as read
+    await db.conversations.update_one(
+        {'_id': ObjectId(conversation_id)},
+        {'$set': {f'unread_{user_id}': 0}}
+    )
+    
+    messages = await db.messages.find({
+        'conversation_id': conversation_id
+    }).sort('created_at', -1).skip(skip).limit(limit).to_list(length=limit)
+    
+    return {
+        'messages': [{
+            'id': str(m['_id']),
+            'from_user_id': m['from_user_id'],
+            'content': m['content'],
+            'message_type': m.get('message_type', 'text'),
+            'created_at': m['created_at'].isoformat(),
+            'is_mine': m['from_user_id'] == user_id
+        } for m in reversed(messages)]
+    }
+
+@api_router.post("/chat/send")
+async def send_message(message: SendMessage, user: dict = Depends(get_current_user)):
+    """Send a message to another user"""
+    user_id = str(user['_id'])
+    
+    # Find or create conversation
+    conv = await db.conversations.find_one({
+        '$or': [
+            {'participant_1': user_id, 'participant_2': message.to_user_id},
+            {'participant_1': message.to_user_id, 'participant_2': user_id}
+        ]
+    })
+    
+    if not conv:
+        conv_result = await db.conversations.insert_one({
+            'participant_1': user_id,
+            'participant_2': message.to_user_id,
+            'created_at': datetime.utcnow(),
+            'last_message_at': datetime.utcnow()
+        })
+        conversation_id = str(conv_result.inserted_id)
+    else:
+        conversation_id = str(conv['_id'])
+    
+    # Create message
+    msg = {
+        'conversation_id': conversation_id,
+        'from_user_id': user_id,
+        'to_user_id': message.to_user_id,
+        'content': message.content,
+        'message_type': message.message_type,
+        'created_at': datetime.utcnow()
+    }
+    result = await db.messages.insert_one(msg)
+    
+    # Update conversation
+    await db.conversations.update_one(
+        {'_id': ObjectId(conversation_id)},
+        {
+            '$set': {
+                'last_message': message.content[:100],
+                'last_message_at': datetime.utcnow()
+            },
+            '$inc': {f'unread_{message.to_user_id}': 1}
+        }
+    )
+    
+    # Send push notification to recipient
+    await send_push_notification(
+        [message.to_user_id],
+        f"New message from {user.get('full_name', user.get('email', 'Security'))}",
+        message.content[:100],
+        {'type': 'chat', 'conversation_id': conversation_id, 'from_user_id': user_id}
+    )
+    
+    return {
+        'message_id': str(result.inserted_id),
+        'conversation_id': conversation_id,
+        'sent_at': datetime.utcnow().isoformat()
+    }
+
+@api_router.get("/chat/unread-count")
+async def get_unread_count(user: dict = Depends(get_current_user)):
+    """Get total unread message count"""
+    user_id = str(user['_id'])
+    
+    pipeline = [
+        {'$match': {
+            '$or': [
+                {'participant_1': user_id},
+                {'participant_2': user_id}
+            ]
+        }},
+        {'$group': {
+            '_id': None,
+            'total': {'$sum': f'$unread_{user_id}'}
+        }}
+    ]
+    
+    result = await db.conversations.aggregate(pipeline).to_list(length=1)
+    total = result[0]['total'] if result else 0
+    
+    return {'unread_count': total}
+
 # Include router
 app.include_router(api_router)
 
