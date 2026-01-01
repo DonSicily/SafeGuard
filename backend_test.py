@@ -80,7 +80,7 @@ class SafeGuardAPITester:
     def register_test_user(self):
         """Register a test user for authentication"""
         print("\n=== REGISTERING TEST USER ===")
-        test_email = f"pushtest_{datetime.now().strftime('%Y%m%d_%H%M%S')}@safeguard.test"
+        test_email = f"pushtest_{datetime.now().strftime('%Y%m%d_%H%M%S')}@gmail.com"
         
         user_data = {
             "email": test_email,
