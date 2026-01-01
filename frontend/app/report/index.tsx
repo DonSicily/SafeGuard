@@ -391,15 +391,121 @@ const styles = StyleSheet.create({
   backButtonText: { fontSize: 16, fontWeight: '600', color: '#64748B' },
   cameraContainer: { flex: 1 },
   camera: { flex: 1 },
-  recordingIndicator: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.7)', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, margin: 20, alignSelf: 'flex-start' },
-  recordingDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#EF4444', marginRight: 8 },
-  recordingText: { fontSize: 14, fontWeight: '600', color: '#fff' },
-  recordingTimer: { fontSize: 20, fontWeight: 'bold', color: '#fff', marginTop: 4 },
-  cameraControls: { position: 'absolute', bottom: 40, left: 0, right: 0, alignItems: 'center' },
-  recordButton: { width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(255,255,255,0.3)', justifyContent: 'center', alignItems: 'center' },
-  recordButtonInner: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#EF4444' },
-  stopButton: { width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(255,255,255,0.3)', justifyContent: 'center', alignItems: 'center' },
-  stopButtonInner: { width: 40, height: 40, backgroundColor: '#EF4444', borderRadius: 4 },
+  
+  // New Timer Overlay Styles
+  timerOverlay: { 
+    position: 'absolute', 
+    top: 0, 
+    left: 0, 
+    right: 0, 
+    alignItems: 'center', 
+    paddingTop: 40,
+    paddingBottom: 20,
+    backgroundColor: 'rgba(0,0,0,0.4)'
+  },
+  timerContainer: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: 'rgba(239, 68, 68, 0.9)', 
+    paddingHorizontal: 24, 
+    paddingVertical: 12, 
+    borderRadius: 30 
+  },
+  recordingDotLarge: { 
+    width: 16, 
+    height: 16, 
+    borderRadius: 8, 
+    backgroundColor: '#fff', 
+    marginRight: 12 
+  },
+  timerText: { 
+    fontSize: 32, 
+    fontWeight: 'bold', 
+    color: '#fff', 
+    fontVariant: ['tabular-nums']
+  },
+  recordingLabel: { 
+    fontSize: 14, 
+    fontWeight: '600', 
+    color: '#fff', 
+    marginTop: 8, 
+    letterSpacing: 2 
+  },
+  minDurationHint: { 
+    fontSize: 12, 
+    color: '#FCD34D', 
+    marginTop: 4 
+  },
+  
+  // Loading Overlay
+  loadingOverlay: { 
+    ...StyleSheet.absoluteFillObject, 
+    backgroundColor: 'rgba(0,0,0,0.6)', 
+    justifyContent: 'center', 
+    alignItems: 'center' 
+  },
+  loadingText: { 
+    color: '#fff', 
+    marginTop: 12, 
+    fontSize: 16 
+  },
+  
+  // Camera Controls
+  cameraControls: { 
+    position: 'absolute', 
+    bottom: 40, 
+    left: 0, 
+    right: 0, 
+    alignItems: 'center' 
+  },
+  recordButton: { 
+    width: 80, 
+    height: 80, 
+    borderRadius: 40, 
+    backgroundColor: 'rgba(255,255,255,0.3)', 
+    justifyContent: 'center', 
+    alignItems: 'center',
+    borderWidth: 4,
+    borderColor: '#fff'
+  },
+  disabledButton: { 
+    opacity: 0.5 
+  },
+  recordButtonInner: { 
+    width: 60, 
+    height: 60, 
+    borderRadius: 30, 
+    backgroundColor: '#EF4444' 
+  },
+  stopButton: { 
+    width: 80, 
+    height: 80, 
+    borderRadius: 40, 
+    backgroundColor: 'rgba(239, 68, 68, 0.3)', 
+    justifyContent: 'center', 
+    alignItems: 'center',
+    borderWidth: 4,
+    borderColor: '#EF4444'
+  },
+  stopButtonDisabled: { 
+    opacity: 0.5 
+  },
+  stopButtonInner: { 
+    width: 32, 
+    height: 32, 
+    backgroundColor: '#EF4444', 
+    borderRadius: 4 
+  },
+  controlHint: { 
+    color: '#fff', 
+    fontSize: 14, 
+    marginTop: 12, 
+    textShadowColor: 'rgba(0,0,0,0.5)', 
+    textShadowOffset: { width: 0, height: 1 }, 
+    textShadowRadius: 2 
+  },
+  
+  // Form Styles
   formContainer: { flex: 1, padding: 24 },
   successBox: { alignItems: 'center', marginTop: 20, marginBottom: 32 },
   successText: { fontSize: 18, fontWeight: '600', color: '#10B981', marginTop: 16 },
