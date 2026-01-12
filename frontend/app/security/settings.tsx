@@ -17,6 +17,10 @@ export default function SecuritySettings() {
   const [status, setStatus] = useState('available');
   const [saving, setSaving] = useState(false);
 
+  const goBack = () => {
+    router.replace('/security/home');
+  };
+
   useEffect(() => {
     loadProfile();
   }, []);
