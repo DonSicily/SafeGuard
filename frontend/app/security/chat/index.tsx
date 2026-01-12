@@ -14,6 +14,10 @@ export default function SecurityChat() {
   const [refreshing, setRefreshing] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
+  const goBack = () => {
+    router.replace('/security/home');
+  };
+
   useEffect(() => {
     loadConversations();
     loadUnreadCount();
