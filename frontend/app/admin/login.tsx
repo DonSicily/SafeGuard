@@ -86,7 +86,7 @@ export default function AdminLogin() {
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.replace("/auth/login")}>
             <Ionicons name="arrow-back" size={20} color="#64748B" />
             <Text style={styles.backButtonText}>Back to App</Text>
           </TouchableOpacity>
