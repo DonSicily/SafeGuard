@@ -84,7 +84,7 @@ export default function SetLocation() {
         radius_km: radiusKm
       }, { headers: { Authorization: `Bearer ${token}` } });
 
-      Alert.alert('Success', 'Team location updated', [{ text: 'OK', onPress: () => router.back() }]);
+      Alert.alert('Success', 'Team location updated', [{ text: 'OK', onPress: () => router.replace('/security/home') }]);
     } catch (error) {
       Alert.alert('Error', 'Failed to save location');
     } finally {
