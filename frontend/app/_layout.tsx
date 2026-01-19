@@ -1,10 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Slot } from 'expo-router';
+import React, { useEffect, useRef } from 'react';
+import { Slot, useRouter, useSegments } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { Alert } from 'react-native';
+import { Alert, View } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { startQueueProcessor } from '../utils/offlineQueue';
-import { useNavigationContainerRef, CommonActions } from '@react-navigation/native';
 
 // Configure notification handler ONCE at module level
 Notifications.setNotificationHandler({
@@ -24,35 +23,32 @@ type NotificationData = {
   conversation_id?: string;
 };
 
-export default function RootLayout() {
-  const [isNavigationReady, setIsNavigationReady] = useState(false);
-  const navigationRef = useNavigationContainerRef();
+// Separate inner component that safely uses router hooks
+function AppContent() {
+  const router = useRouter();
+  const segments = useSegments();
   const notificationListener = useRef<Notifications.EventSubscription | null>(null);
   const responseListener = useRef<Notifications.EventSubscription | null>(null);
   const queueCleanup = useRef<(() => void) | null>(null);
+  const isInitialized = useRef(false);
 
-  // Handle navigation state changes
+  // Initialize offline queue processor once
   useEffect(() => {
-    if (navigationRef?.current) {
-      setIsNavigationReady(true);
+    if (!isInitialized.current) {
+      isInitialized.current = true;
+      queueCleanup.current = startQueueProcessor();
     }
-  }, [navigationRef]);
-
-  // Initialize offline queue processor (no navigation required)
-  useEffect(() => {
-    queueCleanup.current = startQueueProcessor();
     
     return () => {
       if (queueCleanup.current) {
         queueCleanup.current();
+        queueCleanup.current = null;
       }
     };
   }, []);
 
-  // Set up notification listeners (only when navigation is ready)
+  // Set up notification listeners
   useEffect(() => {
-    if (!isNavigationReady) return;
-
     // Listen for notifications received while app is foregrounded
     notificationListener.current = Notifications.addNotificationReceivedListener((notification) => {
       const data = notification.request.content.data as NotificationData;
@@ -67,10 +63,10 @@ export default function RootLayout() {
             { 
               text: 'View', 
               onPress: () => {
-                if (navigationRef?.current?.isReady()) {
-                  navigationRef.current.dispatch(
-                    CommonActions.navigate({ name: 'security/panics' })
-                  );
+                try {
+                  router.push('/security/panics');
+                } catch (e) {
+                  console.log('Navigation error:', e);
                 }
               } 
             },
@@ -85,24 +81,17 @@ export default function RootLayout() {
       const data = response.notification.request.content.data as NotificationData;
       console.log('Notification tapped:', data);
       
-      if (!navigationRef?.current?.isReady()) return;
-      
-      // Navigate based on notification type
-      if (data?.type === 'panic') {
-        navigationRef.current.dispatch(
-          CommonActions.navigate({ name: 'security/panics' })
-        );
-      } else if (data?.type === 'report') {
-        navigationRef.current.dispatch(
-          CommonActions.navigate({ name: 'security/reports' })
-        );
-      } else if (data?.type === 'chat' && data?.conversation_id) {
-        navigationRef.current.dispatch(
-          CommonActions.navigate({ 
-            name: 'security/chat/[id]',
-            params: { id: data.conversation_id }
-          })
-        );
+      try {
+        // Navigate based on notification type
+        if (data?.type === 'panic') {
+          router.push('/security/panics');
+        } else if (data?.type === 'report') {
+          router.push('/security/reports');
+        } else if (data?.type === 'chat' && data?.conversation_id) {
+          router.push(`/security/chat/${data.conversation_id}` as any);
+        }
+      } catch (e) {
+        console.log('Navigation error:', e);
       }
     });
 
@@ -114,11 +103,17 @@ export default function RootLayout() {
         responseListener.current.remove();
       }
     };
-  }, [isNavigationReady]);
+  }, []);
 
+  return <Slot />;
+}
+
+export default function RootLayout() {
   return (
     <SafeAreaProvider>
-      <Slot />
+      <View style={{ flex: 1, backgroundColor: '#0F172A' }}>
+        <AppContent />
+      </View>
     </SafeAreaProvider>
   );
 }
