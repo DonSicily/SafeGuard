@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, TextInput, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,21 +7,9 @@ import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import Slider from '@react-native-community/slider';
+import { NativeMap } from '../../components/NativeMap';
 
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
-
-// Conditionally import MapView only for native
-let MapView: any, Marker: any, Circle: any;
-if (Platform.OS !== 'web') {
-  try {
-    const Maps = require('react-native-maps');
-    MapView = Maps.default;
-    Marker = Maps.Marker;
-    Circle = Maps.Circle;
-  } catch (e) {
-    console.log('Maps not available');
-  }
-}
 
 export default function SetLocation() {
   const router = useRouter();
@@ -102,45 +90,13 @@ export default function SetLocation() {
         <View style={styles.placeholder} />
       </View>
 
-      {Platform.OS !== 'web' && MapView ? (
-        <MapView
-          style={styles.map}
-          region={region}
-          onPress={(e) => setMarkerCoords(e.nativeEvent.coordinate)}
-        >
-          <Marker coordinate={markerCoords} title="Team Location" />
-          <Circle
-            center={markerCoords}
-            radius={radiusKm * 1000}
-            strokeColor="rgba(59, 130, 246, 0.5)"
-            fillColor="rgba(59, 130, 246, 0.1)"
-          />
-        </MapView>
-      ) : (
-        <View style={styles.webMapPlaceholder}>
-          <Ionicons name="map" size={80} color="#64748B" />
-          <Text style={styles.webMapText}>Interactive map available on mobile devices</Text>
-          <View style={styles.coordinatesBox}>
-            <Text style={styles.coordinatesLabel}>Current Location:</Text>
-            <TextInput
-              style={styles.coordinateInput}
-              placeholder="Latitude"
-              placeholderTextColor="#64748B"
-              value={String(markerCoords.latitude)}
-              onChangeText={(val) => setMarkerCoords({...markerCoords, latitude: parseFloat(val) || 0})}
-              keyboardType="numeric"
-            />
-            <TextInput
-              style={styles.coordinateInput}
-              placeholder="Longitude"
-              placeholderTextColor="#64748B"
-              value={String(markerCoords.longitude)}
-              onChangeText={(val) => setMarkerCoords({...markerCoords, longitude: parseFloat(val) || 0})}
-              keyboardType="numeric"
-            />
-          </View>
-        </View>
-      )}
+      <NativeMap
+        region={region}
+        markerCoords={markerCoords}
+        radiusKm={radiusKm}
+        onPress={(coords) => setMarkerCoords(coords)}
+        onMarkerChange={(coords) => setMarkerCoords(coords)}
+      />
 
       <View style={styles.controls}>
         <View style={styles.radiusControl}>
@@ -174,12 +130,6 @@ const styles = StyleSheet.create({
   backButton: { padding: 4 },
   headerTitle: { fontSize: 20, fontWeight: '600', color: '#fff' },
   placeholder: { width: 32 },
-  map: { flex: 1 },
-  webMapPlaceholder: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40, backgroundColor: '#1E293B' },
-  webMapText: { fontSize: 16, color: '#94A3B8', marginTop: 16, textAlign: 'center' },
-  coordinatesBox: { marginTop: 32, width: '100%', gap: 12 },
-  coordinatesLabel: { fontSize: 16, fontWeight: '600', color: '#fff', textAlign: 'center', marginBottom: 8 },
-  coordinateInput: { backgroundColor: '#0F172A', borderRadius: 8, padding: 12, color: '#fff', fontSize: 16, borderWidth: 1, borderColor: '#334155', textAlign: 'center' },
   controls: { backgroundColor: '#1E293B', padding: 20, borderTopLeftRadius: 24, borderTopRightRadius: 24 },
   radiusControl: { marginBottom: 20 },
   radiusLabel: { fontSize: 16, fontWeight: '600', color: '#fff', marginBottom: 12 },
