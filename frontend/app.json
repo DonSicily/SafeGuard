@@ -16,6 +16,9 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.safeguard.app",
+      "config": {
+        "googleMapsApiKey": "AIzaSyA2JXWhx-tT8cTAtXK8qiZcEiwoJjMUNhw"
+      },
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "SafeGuard needs your location to provide emergency services and track your safety during panic alerts and security escort.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "SafeGuard needs continuous location access to track your safety in the background during emergencies and security escort.",
