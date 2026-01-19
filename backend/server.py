@@ -950,7 +950,9 @@ async def admin_login(login_data: AdminLogin):
     if not user:
         raise HTTPException(status_code=401, detail="Invalid admin credentials")
     
-    if not verify_password(login_data.password, user['password_hash']):
+    # Support both 'password' and 'password_hash' field names
+    password_field = user.get('password') or user.get('password_hash')
+    if not password_field or not verify_password(login_data.password, password_field):
         raise HTTPException(status_code=401, detail="Invalid admin credentials")
     
     if not user.get('is_active', True):
