@@ -38,25 +38,29 @@ class FirebaseStorageService:
     def __init__(self):
         self.bucket_name = os.getenv('FIREBASE_STORAGE_BUCKET')
         self.api_key = os.getenv('FIREBASE_API_KEY')
+        self.bucket = None
         
-        # Initialize Firebase Admin SDK (simplified - using API key approach)
-        # For production, use service account JSON
+        # Initialize Firebase Admin SDK (lazy initialization)
+        # Skip initialization at startup to avoid blocking
         self.initialized = False
+        logger.info(f"Firebase Storage service created (lazy init) for bucket: {self.bucket_name}")
+    
+    def _lazy_init(self):
+        """Lazy initialization of Firebase - only when needed"""
+        if self.initialized:
+            return True
         try:
-            # Check if already initialized
             if not firebase_admin._apps:
-                # Use default app initialization
-                # Note: For full functionality, you need service account JSON
-                # This is a simplified approach using the storage bucket
                 firebase_admin.initialize_app(options={
                     'storageBucket': self.bucket_name
                 })
             self.bucket = firebase_storage.bucket()
             self.initialized = True
             logger.info(f"Firebase Storage initialized with bucket: {self.bucket_name}")
+            return True
         except Exception as e:
             logger.warning(f"Firebase initialization warning: {e}. Using fallback mode.")
-            self.initialized = False
+            return False
     
     async def upload_file(
         self, 
