@@ -5,8 +5,9 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
+import Constants from 'expo-constants';
 
-const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'https://guardwatch-14.preview.emergentagent.com';
 
 const ICON_OPTIONS = ['shield', 'shield-checkmark', 'lock-closed', 'lock-open', 'key', 'finger-print', 'eye', 'eye-off', 'pulse', 'heart', 'flash', 'star', 'moon', 'sunny', 'cloudy', 'rainy', 'snow', 'thunderstorm', 'partly-sunny', 'water', 'flame', 'leaf', 'flower', 'paw', 'bug', 'airplane', 'car', 'bicycle', 'boat', 'bus', 'rocket', 'train', 'walk', 'fitness', 'basketball', 'football', 'baseball', 'golf', 'tennisball', 'trophy', 'medal', 'ribbon', 'rose', 'earth', 'globe', 'map', 'location', 'navigate', 'compass', 'pin', 'home', 'business', 'school', 'library', 'briefcase', 'calendar', 'time', 'alarm', 'stopwatch', 'timer', 'notifications', 'chatbubble', 'mail', 'call', 'videocam', 'camera', 'mic', 'musical-notes', 'volume-high', 'headset', 'cart', 'bag', 'pricetag', 'card', 'cash', 'gift', 'balloon', 'cafe', 'pizza', 'beer', 'wine', 'ice-cream', 'nutrition', 'restaurant', 'fast-food', 'book', 'newspaper', 'bookmark', 'document', 'folder', 'calculator', 'clipboard', 'create', 'pencil', 'brush', 'color-palette', 'image', 'images', 'aperture', 'barcode'];
 
