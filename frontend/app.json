@@ -41,7 +41,12 @@
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE"
       ],
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyA2JXWhx-tT8cTAtXK8qiZcEiwoJjMUNhw"
+        }
+      }
     },
     "web": {
       "bundler": "metro",
