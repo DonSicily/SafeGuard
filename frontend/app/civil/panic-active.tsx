@@ -7,9 +7,10 @@ import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
+import Constants from 'expo-constants';
 import EmergencyCategoryModal from '../../components/EmergencyCategoryModal';
 
-const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'https://guardwatch-14.preview.emergentagent.com';
 const LOCATION_TASK = 'background-location-panic';
 
 TaskManager.defineTask(LOCATION_TASK, async ({ data, error }) => {
