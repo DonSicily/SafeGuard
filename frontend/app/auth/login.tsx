@@ -7,7 +7,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { setupPushNotifications } from '../../utils/notifications';
 
-const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+// Use Constants for more reliable env access in native builds
+import Constants from 'expo-constants';
+
+const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'https://guardwatch-14.preview.emergentagent.com';
 
 export default function Login() {
   const router = useRouter();
@@ -24,6 +27,7 @@ export default function Login() {
 
     setLoading(true);
     try {
+      console.log('Attempting login to:', `${BACKEND_URL}/api/auth/login`);
       const response = await axios.post(`${BACKEND_URL}/api/auth/login`, { email, password });
       
       await AsyncStorage.setItem('auth_token', response.data.token);
