@@ -9,6 +9,9 @@
       "distribution": "internal",
       "android": {
         "gradleCommand": ":app:assembleDebug"
+      },
+      "env": {
+        "EXPO_PUBLIC_BACKEND_URL": "https://guardwatch-14.preview.emergentagent.com"
       }
     },
     "preview": {
@@ -16,11 +19,17 @@
       "android": {
         "buildType": "apk",
         "withoutCredentials": true
+      },
+      "env": {
+        "EXPO_PUBLIC_BACKEND_URL": "https://guardwatch-14.preview.emergentagent.com"
       }
     },
     "production": {
       "android": {
         "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_BACKEND_URL": "https://guardwatch-14.preview.emergentagent.com"
       }
     }
   },
