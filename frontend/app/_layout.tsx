@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, useRootNavigationState } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Alert } from 'react-native';
 import * as Notifications from 'expo-notifications';
@@ -11,23 +11,27 @@ Notifications.setNotificationHandler({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
   }),
 });
 
 type NotificationData = {
-  type?: 'panic' | 'report' | 'general';
+  type?: 'panic' | 'report' | 'general' | 'chat';
   event_id?: string;
   report_id?: string;
+  conversation_id?: string;
 };
 
-export default function RootLayout() {
+// Separate component for notification handling that uses router
+function NotificationHandler() {
   const router = useRouter();
+  const rootNavigationState = useRootNavigationState();
   const notificationListener = useRef<Notifications.EventSubscription | null>(null);
   const responseListener = useRef<Notifications.EventSubscription | null>(null);
 
   useEffect(() => {
+    // Wait for navigation to be ready
+    if (!rootNavigationState?.key) return;
+
     // Start offline queue processor
     const stopQueueProcessor = startQueueProcessor();
 
@@ -59,6 +63,8 @@ export default function RootLayout() {
         router.push('/security/panics');
       } else if (data?.type === 'report') {
         router.push('/security/reports');
+      } else if (data?.type === 'chat' && data?.conversation_id) {
+        router.push(`/security/chat/${data.conversation_id}`);
       }
     });
 
@@ -71,8 +77,12 @@ export default function RootLayout() {
         responseListener.current.remove();
       }
     };
-  }, []);
+  }, [rootNavigationState?.key]);
 
+  return null;
+}
+
+export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <Stack
@@ -91,12 +101,24 @@ export default function RootLayout() {
         <Stack.Screen name="security/set-location" options={{ headerShown: false }} />
         <Stack.Screen name="security/reports" options={{ headerShown: false }} />
         <Stack.Screen name="security/panics" options={{ headerShown: false }} />
+        <Stack.Screen name="security/nearby" options={{ headerShown: false }} />
+        <Stack.Screen name="security/settings" options={{ headerShown: false }} />
+        <Stack.Screen name="security/chat/index" options={{ headerShown: false }} />
+        <Stack.Screen name="security/chat/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="admin/login" options={{ headerShown: false }} />
+        <Stack.Screen name="admin/dashboard" options={{ headerShown: false }} />
+        <Stack.Screen name="admin/users" options={{ headerShown: false }} />
+        <Stack.Screen name="admin/panics" options={{ headerShown: false }} />
+        <Stack.Screen name="admin/reports" options={{ headerShown: false }} />
+        <Stack.Screen name="admin/security-map" options={{ headerShown: false }} />
+        <Stack.Screen name="admin/invite-codes" options={{ headerShown: false }} />
         <Stack.Screen name="report/index" options={{ headerShown: false }} />
         <Stack.Screen name="report/audio" options={{ headerShown: false }} />
         <Stack.Screen name="report/list" options={{ headerShown: false }} />
         <Stack.Screen name="premium" options={{ headerShown: false }} />
         <Stack.Screen name="settings" options={{ headerShown: false }} />
       </Stack>
+      <NotificationHandler />
     </SafeAreaProvider>
   );
 }
