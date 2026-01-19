@@ -71,7 +71,8 @@ class FirebaseStorageService:
     ) -> str:
         """Upload file to Firebase Storage and return public URL"""
         try:
-            if not self.initialized:
+            # Try lazy initialization
+            if not self._lazy_init():
                 # Fallback: Return a placeholder URL
                 logger.warning("Firebase not initialized, using placeholder")
                 return f"https://storage.googleapis.com/{self.bucket_name}/{folder}/{filename}"
