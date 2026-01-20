@@ -713,11 +713,13 @@ async def get_nearby_panics(user = Depends(get_current_user)):
     result = []
     for p in panics:
         user_info = await db.users.find_one({'_id': ObjectId(p['user_id'])})
+        if not user_info:
+            continue  # Skip if user not found
         latest_location = p['locations'][-1] if p.get('locations') else None
         result.append({
             'id': str(p['_id']),
-            'user_email': user_info['email'],
-            'user_phone': user_info.get('phone'),
+            'user_email': user_info.get('email', 'Unknown'),
+            'user_phone': user_info.get('phone', ''),
             'activated_at': p['activated_at'],
             'latitude': latest_location['latitude'] if latest_location else p['location']['coordinates'][1],
             'longitude': latest_location['longitude'] if latest_location else p['location']['coordinates'][0],
