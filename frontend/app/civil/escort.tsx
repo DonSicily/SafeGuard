@@ -81,6 +81,11 @@ export default function Escort() {
   };
 
   const startEscort = async () => {
+    if (!isPremium) {
+      Alert.alert('Premium Required', 'Please upgrade to use Security Escort.');
+      return;
+    }
+
     setLoading(true);
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -93,7 +98,7 @@ export default function Escort() {
       await Location.requestBackgroundPermissionsAsync();
 
       const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-      const token = await AsyncStorage.getItem('auth_token');
+      const token = await getToken();
       const response = await axios.post(`${BACKEND_URL}/api/escort/action`, {
         action: 'start',
         location: {
@@ -102,14 +107,24 @@ export default function Escort() {
           accuracy: location.coords.accuracy,
           timestamp: new Date().toISOString()
         }
-      }, { headers: { Authorization: `Bearer ${token}` } });
+      }, { 
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 15000 
+      });
 
       setSessionId(response.data.session_id);
       setIsTracking(true);
       startLocationTracking(token!);
       Alert.alert('Success', 'Escort tracking started');
     } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.detail || 'Failed to start escort');
+      console.error('Start escort error:', error);
+      let errorMessage = 'Failed to start escort';
+      if (error.response?.data?.detail) {
+        errorMessage = error.response.data.detail;
+      } else if (error.request) {
+        errorMessage = 'Network error. Please check your connection.';
+      }
+      Alert.alert('Error', errorMessage);
     } finally {
       setLoading(false);
     }
