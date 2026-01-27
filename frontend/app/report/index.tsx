@@ -1,16 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, TextInput, Alert, ActivityIndicator, Switch, Platform, Animated } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, TextInput, Alert, ActivityIndicator, Switch, Platform, Animated, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Camera, CameraType, CameraView } from 'expo-camera';
+import { Camera, CameraView } from 'expo-camera';
 import * as Location from 'expo-location';
+import * as FileSystem from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
 import Constants from 'expo-constants';
 
 const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'https://guardwatch-14.preview.emergentagent.com';
-const MIN_RECORDING_DURATION = 2; // Minimum 2 seconds recording
+const MIN_RECORDING_DURATION = 2;
 
 export default function Report() {
   const router = useRouter();
@@ -19,6 +21,7 @@ export default function Report() {
   const [caption, setCaption] = useState('');
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [cameraRef, setCameraRef] = useState<any>(null);
   const [recordingUri, setRecordingUri] = useState<string | null>(null);
   const [location, setLocation] = useState<any>(null);
@@ -28,7 +31,6 @@ export default function Report() {
   const recordingPromiseRef = useRef<Promise<any> | null>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
-  // Pulse animation for recording indicator
   useEffect(() => {
     if (isRecording) {
       const pulse = Animated.loop(
@@ -42,7 +44,6 @@ export default function Report() {
     }
   }, [isRecording]);
 
-  // Timer effect for recording duration display
   useEffect(() => {
     let interval: any;
     if (isRecording && recordingStartTime) {
@@ -53,14 +54,20 @@ export default function Report() {
     } else {
       setRecordingDuration(0);
     }
-    return () => {
-      if (interval) clearInterval(interval);
-    };
+    return () => { if (interval) clearInterval(interval); };
   }, [isRecording, recordingStartTime]);
 
   useEffect(() => {
     requestPermissions();
   }, []);
+
+  const getToken = async () => {
+    try {
+      const token = await SecureStore.getItemAsync('auth_token');
+      if (token) return token;
+    } catch (e) {}
+    return await AsyncStorage.getItem('auth_token');
+  };
 
   const requestPermissions = async () => {
     try {
@@ -72,79 +79,39 @@ export default function Report() {
       
       if (locationStatus === 'granted') {
         try {
-          const loc = await Location.getCurrentPositionAsync({ 
-            accuracy: Location.Accuracy.High,
-            timeInterval: 5000,
-            distanceInterval: 0
-          });
+          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
           setLocation(loc);
-          console.log('Location obtained:', loc.coords.latitude, loc.coords.longitude);
-        } catch (locError: any) {
-          console.error('Location error:', locError);
-          Alert.alert(
-            'Location Service Required',
-            'Please enable Location Services in your device settings.\n\n' +
-            '1. Go to Settings\n' +
-            '2. Enable Location/GPS\n' +
-            '3. Restart the app\n\n' +
-            'Video recording will use default location for now.',
-            [{ text: 'OK' }]
-          );
-          // Use default location as fallback
+        } catch (locError) {
           setLocation({ coords: { latitude: 9.0820, longitude: 8.6753 } } as any);
         }
       } else {
-        // Use default location if permission denied
         setLocation({ coords: { latitude: 9.0820, longitude: 8.6753 } } as any);
       }
     } catch (error) {
       console.error('Permission error:', error);
-      Alert.alert('Error', 'Failed to get permissions');
     }
   };
 
   const startRecording = async () => {
-    if (!cameraRef) {
-      Alert.alert('Error', 'Camera not ready. Please wait.');
-      return;
-    }
-
-    if (!cameraReady) {
+    if (!cameraRef || !cameraReady) {
       Alert.alert('Please Wait', 'Camera is still initializing...');
       return;
     }
 
-    console.log('Starting recording...');
     setIsRecording(true);
     setRecordingStartTime(Date.now());
     
     try {
-      // Start recording and handle promise separately
-      recordingPromiseRef.current = cameraRef.recordAsync({ 
-        maxDuration: 300, // 5 minutes max
-        quality: '720p'
-      });
-      
-      // Handle the promise completion
+      recordingPromiseRef.current = cameraRef.recordAsync({ maxDuration: 300, quality: '720p' });
       const video = await recordingPromiseRef.current;
       
-      console.log('Recording completed:', video);
       if (video && video.uri) {
         setRecordingUri(video.uri);
-        const finalDuration = recordingStartTime ? Math.round((Date.now() - recordingStartTime) / 1000) : recordingDuration;
-        console.log('Video saved successfully, duration:', finalDuration);
-        Alert.alert('Video Recorded', `Recording saved (${formatDuration(finalDuration)})`);
+        Alert.alert('Video Recorded', `Recording saved (${formatDuration(recordingDuration)})`);
       }
     } catch (error: any) {
-      console.log('Recording error/stop:', error?.message);
-      // Check if video was saved despite error (common on stop)
-      if (error?.message?.toLowerCase().includes('stopped') || 
-          error?.message?.toLowerCase().includes('abort') ||
-          error?.message?.toLowerCase().includes('cancel')) {
-        // Recording was manually stopped - this is expected
-        console.log('Recording was stopped by user');
-      } else {
-        Alert.alert('Recording Error', error?.message || 'Unknown error occurred');
+      if (!error?.message?.toLowerCase().includes('stopped')) {
+        Alert.alert('Recording Error', error?.message || 'Unknown error');
       }
     } finally {
       setIsRecording(false);
@@ -155,18 +122,11 @@ export default function Report() {
 
   const stopRecording = () => {
     if (!isRecording) return;
-    
-    // Check minimum recording duration
     if (recordingDuration < MIN_RECORDING_DURATION) {
-      Alert.alert(
-        'Recording Too Short', 
-        `Please record for at least ${MIN_RECORDING_DURATION} seconds. Current: ${recordingDuration}s`
-      );
+      Alert.alert('Recording Too Short', `Please record for at least ${MIN_RECORDING_DURATION} seconds.`);
       return;
     }
-
     if (cameraRef && recordingPromiseRef.current) {
-      console.log('User clicked stop after', recordingDuration, 'seconds');
       cameraRef.stopRecording();
     }
   };
@@ -177,10 +137,7 @@ export default function Report() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const onCameraReady = () => {
-    console.log('Camera is ready');
-    setCameraReady(true);
-  };
+  const onCameraReady = () => setCameraReady(true);
 
   const submitReport = async () => {
     if (!recordingUri) {
@@ -189,19 +146,99 @@ export default function Report() {
     }
 
     setLoading(true);
+    setUploadProgress(0);
+    
     try {
-      // Get current location if not already available
       let currentLocation = location;
       if (!currentLocation) {
         try {
           currentLocation = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
         } catch (err) {
-          // Use default location if GPS fails
           currentLocation = { coords: { latitude: 9.0820, longitude: 8.6753 } };
         }
       }
 
-      const token = await AsyncStorage.getItem('auth_token');
+      const token = await getToken();
+      
+      // Step 1: Read the video file
+      setUploadProgress(10);
+      const fileInfo = await FileSystem.getInfoAsync(recordingUri);
+      if (!fileInfo.exists) {
+        throw new Error('Video file not found');
+      }
+
+      // Step 2: Convert to base64 for upload
+      setUploadProgress(20);
+      const base64Video = await FileSystem.readAsStringAsync(recordingUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      // Step 3: Upload to backend with file data
+      setUploadProgress(40);
+      
+      const response = await axios.post(
+        `${BACKEND_URL}/api/report/upload-video`,
+        {
+          video_data: base64Video,
+          caption: caption || 'Live security report',
+          is_anonymous: isAnonymous,
+          latitude: currentLocation.coords.latitude,
+          longitude: currentLocation.coords.longitude,
+          duration_seconds: recordingDuration
+        },
+        { 
+          headers: { 
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 120000, // 2 minute timeout for large uploads
+          onUploadProgress: (progressEvent) => {
+            const progress = progressEvent.loaded / (progressEvent.total || 1);
+            setUploadProgress(40 + Math.round(progress * 50));
+          }
+        }
+      );
+
+      setUploadProgress(100);
+
+      Alert.alert('Success!', 'Your video report has been uploaded successfully.', [
+        { text: 'OK', onPress: () => router.back() }
+      ]);
+    } catch (error: any) {
+      console.error('Submit error:', error);
+      
+      let errorMessage = 'Failed to upload report.';
+      if (error.response) {
+        errorMessage = error.response.data?.detail || errorMessage;
+      } else if (error.code === 'ECONNABORTED') {
+        errorMessage = 'Upload timed out. Try with a shorter video.';
+      } else if (error.request) {
+        errorMessage = 'Network error. Please check your connection.';
+      }
+      
+      // Offer to save locally
+      Alert.alert(
+        'Upload Failed',
+        `${errorMessage}\n\nWould you like to save the report locally and retry later?`,
+        [
+          { text: 'Discard', style: 'destructive' },
+          { 
+            text: 'Save Locally', 
+            onPress: () => saveReportLocally()
+          }
+        ]
+      );
+    } finally {
+      setLoading(false);
+      setUploadProgress(0);
+    }
+  };
+
+  const saveReportLocally = async () => {
+    try {
+      const token = await getToken();
+      let currentLocation = location || { coords: { latitude: 9.0820, longitude: 8.6753 } };
+      
       await axios.post(
         `${BACKEND_URL}/api/report/create`,
         {
@@ -209,7 +246,6 @@ export default function Report() {
           caption: caption || 'Live security report',
           is_anonymous: isAnonymous,
           file_url: recordingUri,
-          thumbnail: 'data:image/png;base64,placeholder',
           uploaded: false,
           latitude: currentLocation.coords.latitude,
           longitude: currentLocation.coords.longitude,
@@ -217,21 +253,29 @@ export default function Report() {
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      Alert.alert('Success!', 'Your video report has been submitted successfully.', [
+      Alert.alert('Saved!', 'Report saved locally. It will be uploaded when connection improves.', [
         { text: 'OK', onPress: () => router.back() }
       ]);
-    } catch (error: any) {
-      console.error('Submit error:', error);
-      Alert.alert('Error', error.response?.data?.detail || 'Failed to submit report. Please try again.');
-    } finally {
-      setLoading(false);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to save report locally.');
     }
+  };
+
+  const retryUpload = () => {
+    Alert.alert(
+      'Retry Upload',
+      'This will attempt to upload the video again. Make sure you have a stable internet connection.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Retry', onPress: submitReport }
+      ]
+    );
   };
 
   if (hasPermission === null) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.content}>
+        <View style={styles.centerContent}>
           <ActivityIndicator size="large" color="#10B981" />
           <Text style={styles.permissionText}>Requesting permissions...</Text>
         </View>
@@ -242,14 +286,11 @@ export default function Report() {
   if (hasPermission === false) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.content}>
+        <View style={styles.centerContent}>
           <Ionicons name="camera-off" size={80} color="#64748B" />
           <Text style={styles.permissionText}>Camera & microphone permissions required</Text>
           <TouchableOpacity style={styles.button} onPress={requestPermissions}>
             <Text style={styles.buttonText}>Grant Permissions</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-            <Text style={styles.backButtonText}>Go Back</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -275,7 +316,6 @@ export default function Report() {
             onCameraReady={onCameraReady}
             mode="video"
           >
-            {/* Recording Timer Overlay - Large & Prominent */}
             {isRecording && (
               <View style={styles.timerOverlay}>
                 <View style={styles.timerContainer}>
@@ -283,13 +323,9 @@ export default function Report() {
                   <Text style={styles.timerText}>{formatDuration(recordingDuration)}</Text>
                 </View>
                 <Text style={styles.recordingLabel}>RECORDING</Text>
-                {recordingDuration < MIN_RECORDING_DURATION && (
-                  <Text style={styles.minDurationHint}>Record at least {MIN_RECORDING_DURATION} seconds</Text>
-                )}
               </View>
             )}
 
-            {/* Camera Ready Indicator */}
             {!cameraReady && !isRecording && (
               <View style={styles.loadingOverlay}>
                 <ActivityIndicator size="large" color="#fff" />
@@ -308,28 +344,21 @@ export default function Report() {
                 <View style={styles.recordButtonInner} />
               </TouchableOpacity>
             ) : (
-              <TouchableOpacity 
-                style={[
-                  styles.stopButton, 
-                  recordingDuration < MIN_RECORDING_DURATION && styles.stopButtonDisabled
-                ]} 
-                onPress={stopRecording}
-              >
+              <TouchableOpacity style={styles.stopButton} onPress={stopRecording}>
                 <View style={styles.stopButtonInner} />
               </TouchableOpacity>
             )}
-            
-            {/* Duration hint below button */}
             <Text style={styles.controlHint}>
-              {!isRecording ? 'Tap to start recording' : `Tap to stop${recordingDuration < MIN_RECORDING_DURATION ? ` (wait ${MIN_RECORDING_DURATION - recordingDuration}s)` : ''}`}
+              {!isRecording ? 'Tap to start' : 'Tap to stop'}
             </Text>
           </View>
         </View>
       ) : (
-        <View style={styles.formContainer}>
+        <ScrollView style={styles.formContainer} contentContainerStyle={styles.formContent}>
           <View style={styles.successBox}>
             <Ionicons name="checkmark-circle" size={60} color="#10B981" />
-            <Text style={styles.successText}>Video Recorded Successfully</Text>
+            <Text style={styles.successText}>Video Recorded</Text>
+            <Text style={styles.durationText}>Duration: {formatDuration(recordingDuration)}</Text>
           </View>
 
           <View style={styles.inputContainer}>
@@ -358,21 +387,54 @@ export default function Report() {
             />
           </View>
 
-          <View style={styles.infoBox}>
-            <Ionicons name="information-circle" size={20} color="#3B82F6" />
-            <Text style={styles.infoText}>
-              Video saved locally. Will be uploaded to secure cloud storage when you add Firebase credentials.
-            </Text>
-          </View>
+          {/* Upload Progress */}
+          {loading && (
+            <View style={styles.progressContainer}>
+              <View style={styles.progressBar}>
+                <View style={[styles.progressFill, { width: `${uploadProgress}%` }]} />
+              </View>
+              <Text style={styles.progressText}>
+                {uploadProgress < 40 ? 'Preparing video...' : 
+                 uploadProgress < 90 ? 'Uploading...' : 'Almost done...'}
+                {' '}{uploadProgress}%
+              </Text>
+            </View>
+          )}
 
-          <TouchableOpacity style={styles.submitButton} onPress={submitReport} disabled={loading}>
-            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitButtonText}>Submit Report</Text>}
+          <TouchableOpacity 
+            style={[styles.submitButton, loading && styles.disabledButton]} 
+            onPress={submitReport} 
+            disabled={loading}
+          >
+            {loading ? (
+              <View style={styles.loadingRow}>
+                <ActivityIndicator color="#fff" />
+                <Text style={styles.submitButtonText}>Uploading...</Text>
+              </View>
+            ) : (
+              <>
+                <Ionicons name="cloud-upload" size={20} color="#fff" />
+                <Text style={styles.submitButtonText}>Upload Report</Text>
+              </>
+            )}
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.retakeButton} onPress={() => { setRecordingUri(null); setCaption(''); }}>
+          {/* Retry Button - shown when not loading */}
+          {!loading && (
+            <TouchableOpacity style={styles.retryButton} onPress={retryUpload}>
+              <Ionicons name="refresh" size={20} color="#F59E0B" />
+              <Text style={styles.retryButtonText}>Retry Upload</Text>
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity 
+            style={styles.retakeButton} 
+            onPress={() => { setRecordingUri(null); setCaption(''); }}
+            disabled={loading}
+          >
             <Text style={styles.retakeButtonText}>Record Again</Text>
           </TouchableOpacity>
-        </View>
+        </ScrollView>
       )}
     </SafeAreaView>
   );
@@ -384,142 +446,46 @@ const styles = StyleSheet.create({
   headerButton: { padding: 4 },
   headerTitle: { fontSize: 20, fontWeight: '600', color: '#fff' },
   placeholder: { width: 32 },
-  content: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
-  permissionText: { fontSize: 16, color: '#94A3B8', marginTop: 16, marginBottom: 24, textAlign: 'center' },
-  button: { backgroundColor: '#3B82F6', paddingHorizontal: 32, paddingVertical: 16, borderRadius: 12, marginBottom: 12 },
+  centerContent: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
+  permissionText: { fontSize: 16, color: '#94A3B8', marginTop: 16, textAlign: 'center' },
+  button: { backgroundColor: '#3B82F6', paddingHorizontal: 32, paddingVertical: 16, borderRadius: 12, marginTop: 16 },
   buttonText: { fontSize: 16, fontWeight: '600', color: '#fff' },
-  backButton: { paddingHorizontal: 32, paddingVertical: 16, borderRadius: 12, borderWidth: 1, borderColor: '#64748B' },
-  backButtonText: { fontSize: 16, fontWeight: '600', color: '#64748B' },
   cameraContainer: { flex: 1 },
   camera: { flex: 1 },
-  
-  // New Timer Overlay Styles
-  timerOverlay: { 
-    position: 'absolute', 
-    top: 0, 
-    left: 0, 
-    right: 0, 
-    alignItems: 'center', 
-    paddingTop: 40,
-    paddingBottom: 20,
-    backgroundColor: 'rgba(0,0,0,0.4)'
-  },
-  timerContainer: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    backgroundColor: 'rgba(239, 68, 68, 0.9)', 
-    paddingHorizontal: 24, 
-    paddingVertical: 12, 
-    borderRadius: 30 
-  },
-  recordingDotLarge: { 
-    width: 16, 
-    height: 16, 
-    borderRadius: 8, 
-    backgroundColor: '#fff', 
-    marginRight: 12 
-  },
-  timerText: { 
-    fontSize: 32, 
-    fontWeight: 'bold', 
-    color: '#fff', 
-    fontVariant: ['tabular-nums']
-  },
-  recordingLabel: { 
-    fontSize: 14, 
-    fontWeight: '600', 
-    color: '#fff', 
-    marginTop: 8, 
-    letterSpacing: 2 
-  },
-  minDurationHint: { 
-    fontSize: 12, 
-    color: '#FCD34D', 
-    marginTop: 4 
-  },
-  
-  // Loading Overlay
-  loadingOverlay: { 
-    ...StyleSheet.absoluteFillObject, 
-    backgroundColor: 'rgba(0,0,0,0.6)', 
-    justifyContent: 'center', 
-    alignItems: 'center' 
-  },
-  loadingText: { 
-    color: '#fff', 
-    marginTop: 12, 
-    fontSize: 16 
-  },
-  
-  // Camera Controls
-  cameraControls: { 
-    position: 'absolute', 
-    bottom: 40, 
-    left: 0, 
-    right: 0, 
-    alignItems: 'center' 
-  },
-  recordButton: { 
-    width: 80, 
-    height: 80, 
-    borderRadius: 40, 
-    backgroundColor: 'rgba(255,255,255,0.3)', 
-    justifyContent: 'center', 
-    alignItems: 'center',
-    borderWidth: 4,
-    borderColor: '#fff'
-  },
-  disabledButton: { 
-    opacity: 0.5 
-  },
-  recordButtonInner: { 
-    width: 60, 
-    height: 60, 
-    borderRadius: 30, 
-    backgroundColor: '#EF4444' 
-  },
-  stopButton: { 
-    width: 80, 
-    height: 80, 
-    borderRadius: 40, 
-    backgroundColor: 'rgba(239, 68, 68, 0.3)', 
-    justifyContent: 'center', 
-    alignItems: 'center',
-    borderWidth: 4,
-    borderColor: '#EF4444'
-  },
-  stopButtonDisabled: { 
-    opacity: 0.5 
-  },
-  stopButtonInner: { 
-    width: 32, 
-    height: 32, 
-    backgroundColor: '#EF4444', 
-    borderRadius: 4 
-  },
-  controlHint: { 
-    color: '#fff', 
-    fontSize: 14, 
-    marginTop: 12, 
-    textShadowColor: 'rgba(0,0,0,0.5)', 
-    textShadowOffset: { width: 0, height: 1 }, 
-    textShadowRadius: 2 
-  },
-  
-  // Form Styles
-  formContainer: { flex: 1, padding: 24 },
-  successBox: { alignItems: 'center', marginTop: 20, marginBottom: 32 },
-  successText: { fontSize: 18, fontWeight: '600', color: '#10B981', marginTop: 16 },
-  inputContainer: { marginBottom: 24 },
+  timerOverlay: { position: 'absolute', top: 0, left: 0, right: 0, alignItems: 'center', paddingTop: 40, paddingBottom: 20, backgroundColor: 'rgba(0,0,0,0.4)' },
+  timerContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(239, 68, 68, 0.9)', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 30 },
+  recordingDotLarge: { width: 16, height: 16, borderRadius: 8, backgroundColor: '#fff', marginRight: 12 },
+  timerText: { fontSize: 32, fontWeight: 'bold', color: '#fff', fontVariant: ['tabular-nums'] },
+  recordingLabel: { fontSize: 14, fontWeight: '600', color: '#fff', marginTop: 8, letterSpacing: 2 },
+  loadingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
+  loadingText: { color: '#fff', marginTop: 12, fontSize: 16 },
+  cameraControls: { position: 'absolute', bottom: 40, left: 0, right: 0, alignItems: 'center' },
+  recordButton: { width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(255,255,255,0.3)', justifyContent: 'center', alignItems: 'center', borderWidth: 4, borderColor: '#fff' },
+  disabledButton: { opacity: 0.5 },
+  recordButtonInner: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#EF4444' },
+  stopButton: { width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(239, 68, 68, 0.3)', justifyContent: 'center', alignItems: 'center', borderWidth: 4, borderColor: '#EF4444' },
+  stopButtonInner: { width: 32, height: 32, backgroundColor: '#EF4444', borderRadius: 4 },
+  controlHint: { color: '#fff', fontSize: 14, marginTop: 12 },
+  formContainer: { flex: 1 },
+  formContent: { padding: 24 },
+  successBox: { alignItems: 'center', marginBottom: 24 },
+  successText: { fontSize: 18, fontWeight: '600', color: '#10B981', marginTop: 12 },
+  durationText: { fontSize: 14, color: '#94A3B8', marginTop: 4 },
+  inputContainer: { marginBottom: 20 },
   label: { fontSize: 16, fontWeight: '600', color: '#fff', marginBottom: 8 },
   textArea: { backgroundColor: '#1E293B', borderRadius: 12, padding: 16, color: '#fff', fontSize: 16, minHeight: 100, textAlignVertical: 'top', borderWidth: 1, borderColor: '#334155' },
-  switchContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1E293B', padding: 16, borderRadius: 12, marginBottom: 24 },
+  switchContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1E293B', padding: 16, borderRadius: 12, marginBottom: 20 },
   switchLabel: { fontSize: 16, fontWeight: '600', color: '#fff' },
   switchDescription: { fontSize: 14, color: '#94A3B8', marginTop: 4 },
-  infoBox: { flexDirection: 'row', backgroundColor: '#1E293B', borderRadius: 12, padding: 16, gap: 12, marginBottom: 24 },
-  infoText: { flex: 1, fontSize: 14, color: '#64748B', lineHeight: 20 },
-  submitButton: { backgroundColor: '#10B981', borderRadius: 12, paddingVertical: 18, alignItems: 'center', marginBottom: 16 },
+  progressContainer: { marginBottom: 20 },
+  progressBar: { height: 8, backgroundColor: '#1E293B', borderRadius: 4, overflow: 'hidden' },
+  progressFill: { height: '100%', backgroundColor: '#10B981', borderRadius: 4 },
+  progressText: { fontSize: 14, color: '#94A3B8', marginTop: 8, textAlign: 'center' },
+  submitButton: { backgroundColor: '#10B981', borderRadius: 12, paddingVertical: 18, alignItems: 'center', marginBottom: 12, flexDirection: 'row', justifyContent: 'center', gap: 8 },
   submitButtonText: { fontSize: 18, fontWeight: '600', color: '#fff' },
+  loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  retryButton: { backgroundColor: '#F59E0B20', borderRadius: 12, paddingVertical: 16, alignItems: 'center', marginBottom: 12, flexDirection: 'row', justifyContent: 'center', gap: 8, borderWidth: 1, borderColor: '#F59E0B' },
+  retryButtonText: { fontSize: 16, fontWeight: '600', color: '#F59E0B' },
   retakeButton: { borderRadius: 12, paddingVertical: 16, alignItems: 'center', borderWidth: 1, borderColor: '#64748B' },
   retakeButtonText: { fontSize: 16, fontWeight: '600', color: '#64748B' },
 });
