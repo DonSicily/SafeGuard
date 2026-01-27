@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
 import Constants from 'expo-constants';
 
@@ -14,14 +15,70 @@ export default function Escort() {
   const router = useRouter();
   const [isTracking, setIsTracking] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [checkingPremium, setCheckingPremium] = useState(true);
+  const [isPremium, setIsPremium] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const intervalRef = useRef<any>(null);
 
   useEffect(() => {
+    checkPremiumStatus();
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, []);
+
+  const getToken = async () => {
+    try {
+      const token = await SecureStore.getItemAsync('auth_token');
+      if (token) return token;
+    } catch (e) {}
+    return await AsyncStorage.getItem('auth_token');
+  };
+
+  const checkPremiumStatus = async () => {
+    setCheckingPremium(true);
+    try {
+      const token = await getToken();
+      if (!token) {
+        Alert.alert('Error', 'Please login again');
+        router.replace('/auth/login');
+        return;
+      }
+
+      const response = await axios.get(`${BACKEND_URL}/api/user/profile`, {
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 10000
+      });
+
+      const premium = response.data?.is_premium === true;
+      setIsPremium(premium);
+      
+      if (!premium) {
+        Alert.alert(
+          'Premium Feature',
+          'Security Escort is a premium feature. Would you like to upgrade?',
+          [
+            { text: 'Go Back', onPress: () => router.back() },
+            { text: 'Upgrade', onPress: () => router.replace('/premium') }
+          ]
+        );
+      }
+    } catch (error: any) {
+      console.error('Error checking premium:', error);
+      // Fallback to local storage
+      const storedPremium = await AsyncStorage.getItem('is_premium');
+      const premium = storedPremium === 'true' || storedPremium === 'True';
+      setIsPremium(premium);
+      
+      if (!premium) {
+        Alert.alert('Premium Required', 'This feature requires premium subscription.', [
+          { text: 'OK', onPress: () => router.back() }
+        ]);
+      }
+    } finally {
+      setCheckingPremium(false);
+    }
+  };
 
   const startEscort = async () => {
     setLoading(true);
