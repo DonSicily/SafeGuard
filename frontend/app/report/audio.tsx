@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, TextInput, Alert, ActivityIndicator, Switch } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, TextInput, Alert, ActivityIndicator, Switch, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
 import Constants from 'expo-constants';
 
@@ -23,13 +24,38 @@ export default function AudioReport() {
   const [location, setLocation] = useState<any>(null);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
 
-  React.useEffect(() => {
+  useEffect(() => {
     requestPermissions();
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, []);
+
+  // Pulse animation for recording indicator
+  useEffect(() => {
+    if (isRecording) {
+      const pulse = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 1.2,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      pulse.start();
+      return () => pulse.stop();
+    } else {
+      pulseAnim.setValue(1);
+    }
+  }, [isRecording]);
 
   // Format time as MM:SS
   const formatTime = (seconds: number) => {
@@ -61,11 +87,9 @@ export default function AudioReport() {
             'Please enable Location Services in your device settings to get accurate location for reports.',
             [{ text: 'OK' }]
           );
-          // Use default location as fallback
           setLocation({ coords: { latitude: 9.0820, longitude: 8.6753 } } as any);
         }
       } else {
-        // Use default location if permission denied
         setLocation({ coords: { latitude: 9.0820, longitude: 8.6753 } } as any);
       }
     } catch (error) {
@@ -79,6 +103,13 @@ export default function AudioReport() {
       const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
       setRecording(recording);
       setIsRecording(true);
+      setRecordingDuration(0);
+      
+      // Start the timer
+      timerRef.current = setInterval(() => {
+        setRecordingDuration(prev => prev + 1);
+      }, 1000);
+      
     } catch (error: any) {
       console.error('Recording error:', error);
       Alert.alert('Error', `Failed to start recording: ${error.message}`);
@@ -89,16 +120,32 @@ export default function AudioReport() {
     if (!recording) return;
 
     try {
+      // Stop the timer
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      
       setIsRecording(false);
       await recording.stopAndUnloadAsync();
       const uri = recording.getURI();
       setAudioUri(uri);
       setRecording(null);
-      Alert.alert('Success', 'Audio recorded successfully');
+      Alert.alert('Success', `Audio recorded successfully (${formatTime(recordingDuration)})`);
     } catch (error: any) {
       console.error('Stop recording error:', error);
       Alert.alert('Error', `Failed to stop recording: ${error.message}`);
     }
+  };
+
+  const getToken = async () => {
+    try {
+      const token = await SecureStore.getItemAsync('auth_token');
+      if (token) return token;
+    } catch (e) {
+      // SecureStore not available
+    }
+    return await AsyncStorage.getItem('auth_token');
   };
 
   const submitReport = async () => {
@@ -109,42 +156,49 @@ export default function AudioReport() {
 
     setLoading(true);
     try {
-      // Get current location if not already available
       let currentLocation = location;
       if (!currentLocation) {
         try {
           currentLocation = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
         } catch (err) {
-          // Use default location if GPS fails
           currentLocation = { coords: { latitude: 9.0820, longitude: 8.6753 } };
         }
       }
 
-      const token = await AsyncStorage.getItem('auth_token');
+      const token = await getToken();
       
-      // Note: Audio file is saved locally on device
-      // In production, this would upload to Firebase Storage
-      // For now, saving metadata with local URI
-      await axios.post(
+      const response = await axios.post(
         `${BACKEND_URL}/api/report/create`,
         {
           type: 'audio',
           caption: caption || 'Audio security report',
           is_anonymous: isAnonymous,
           file_url: audioUri,
-          uploaded: true, // Marked as uploaded since metadata is saved
+          uploaded: true,
           latitude: currentLocation.coords.latitude,
           longitude: currentLocation.coords.longitude,
+          duration_seconds: recordingDuration
         },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { 
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 15000
+        }
       );
 
-      Alert.alert('Success!', 'Your audio report has been submitted and is visible to security teams.', [
+      console.log('Report submitted:', response.data);
+
+      Alert.alert('Success!', 'Your audio report has been submitted and is visible to nearby security teams.', [
         { text: 'OK', onPress: () => router.back() }
       ]);
     } catch (error: any) {
       console.error('Submit error:', error);
-      Alert.alert('Error', error.response?.data?.detail || 'Failed to submit report. Please try again.');
+      let errorMessage = 'Failed to submit report. Please try again.';
+      if (error.response) {
+        errorMessage = error.response.data?.detail || errorMessage;
+      } else if (error.request) {
+        errorMessage = 'Server unreachable. Please check your connection.';
+      }
+      Alert.alert('Error', errorMessage);
     } finally {
       setLoading(false);
     }
@@ -153,7 +207,7 @@ export default function AudioReport() {
   if (hasPermission === null) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.content}>
+        <View style={styles.centerContent}>
           <ActivityIndicator size="large" color="#8B5CF6" />
           <Text style={styles.permissionText}>Requesting permissions...</Text>
         </View>
@@ -164,14 +218,14 @@ export default function AudioReport() {
   if (hasPermission === false) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.content}>
+        <View style={styles.centerContent}>
           <Ionicons name="mic-off" size={80} color="#64748B" />
           <Text style={styles.permissionText}>Microphone permission is required</Text>
           <TouchableOpacity style={styles.button} onPress={requestPermissions}>
             <Text style={styles.buttonText}>Grant Permission</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-            <Text style={styles.backButtonText}>Go Back</Text>
+          <TouchableOpacity style={styles.backButtonAlt} onPress={() => router.back()}>
+            <Text style={styles.backButtonTextAlt}>Go Back</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -192,20 +246,28 @@ export default function AudioReport() {
         {!audioUri ? (
           <View style={styles.recordingSection}>
             <View style={styles.microphoneContainer}>
-              <View style={[styles.microphoneCircle, isRecording && styles.recordingPulse]}>
-                <Ionicons name="mic" size={80} color="#8B5CF6" />
-              </View>
+              <Animated.View style={[
+                styles.microphoneCircle, 
+                isRecording && styles.recordingPulse,
+                { transform: [{ scale: isRecording ? pulseAnim : 1 }] }
+              ]}>
+                <Ionicons name="mic" size={80} color={isRecording ? '#EF4444' : '#8B5CF6'} />
+              </Animated.View>
             </View>
 
+            {/* Recording Timer - Always visible during recording */}
             {isRecording && (
-              <View style={styles.recordingIndicator}>
-                <View style={styles.recordingDot} />
-                <Text style={styles.recordingText}>Recording...</Text>
+              <View style={styles.timerContainer}>
+                <View style={styles.timerBox}>
+                  <View style={styles.recordingDot} />
+                  <Text style={styles.timerText}>{formatTime(recordingDuration)}</Text>
+                </View>
+                <Text style={styles.recordingLabel}>Recording in progress...</Text>
               </View>
             )}
 
             <Text style={styles.instruction}>
-              {isRecording ? 'Tap to stop recording' : 'Tap the microphone to start recording'}
+              {isRecording ? 'Tap to stop recording' : 'Tap the button to start recording'}
             </Text>
 
             <TouchableOpacity
@@ -221,6 +283,7 @@ export default function AudioReport() {
             <View style={styles.successBox}>
               <Ionicons name="checkmark-circle" size={60} color="#8B5CF6" />
               <Text style={styles.successText}>Audio Recorded</Text>
+              <Text style={styles.durationText}>Duration: {formatTime(recordingDuration)}</Text>
             </View>
 
             <View style={styles.inputContainer}>
@@ -253,7 +316,7 @@ export default function AudioReport() {
               {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitButtonText}>Submit Report</Text>}
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.retakeButton} onPress={() => { setAudioUri(null); setCaption(''); }}>
+            <TouchableOpacity style={styles.retakeButton} onPress={() => { setAudioUri(null); setCaption(''); setRecordingDuration(0); }}>
               <Text style={styles.retakeButtonText}>Record Again</Text>
             </TouchableOpacity>
           </View>
@@ -270,17 +333,46 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 20, fontWeight: '600', color: '#fff' },
   placeholder: { width: 32 },
   content: { flex: 1, padding: 24 },
+  centerContent: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
   permissionText: { fontSize: 16, color: '#94A3B8', marginTop: 16, marginBottom: 24, textAlign: 'center' },
   button: { backgroundColor: '#8B5CF6', paddingHorizontal: 32, paddingVertical: 16, borderRadius: 12, marginBottom: 12 },
   buttonText: { fontSize: 16, fontWeight: '600', color: '#fff' },
-  backButtonText: { fontSize: 16, fontWeight: '600', color: '#64748B' },
+  backButtonAlt: { padding: 12 },
+  backButtonTextAlt: { fontSize: 16, fontWeight: '600', color: '#64748B' },
   recordingSection: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  microphoneContainer: { marginBottom: 40 },
-  microphoneCircle: { width: 200, height: 200, borderRadius: 100, backgroundColor: '#1E293B', justifyContent: 'center', alignItems: 'center', borderWidth: 4, borderColor: '#8B5CF6' },
-  recordingPulse: { borderColor: '#EF4444' },
-  recordingIndicator: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1E293B', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 24, marginBottom: 24 },
-  recordingDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#EF4444', marginRight: 12 },
-  recordingText: { fontSize: 16, fontWeight: '600', color: '#EF4444' },
+  microphoneContainer: { marginBottom: 32 },
+  microphoneCircle: { width: 180, height: 180, borderRadius: 90, backgroundColor: '#1E293B', justifyContent: 'center', alignItems: 'center', borderWidth: 4, borderColor: '#8B5CF6' },
+  recordingPulse: { borderColor: '#EF4444', backgroundColor: '#EF444420' },
+  
+  // Timer styles
+  timerContainer: { alignItems: 'center', marginBottom: 24 },
+  timerBox: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: '#1E293B', 
+    paddingHorizontal: 24, 
+    paddingVertical: 16, 
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: '#EF4444',
+    marginBottom: 8
+  },
+  timerText: { 
+    fontSize: 48, 
+    fontWeight: 'bold', 
+    color: '#EF4444',
+    fontVariant: ['tabular-nums'],
+    letterSpacing: 2
+  },
+  recordingDot: { 
+    width: 16, 
+    height: 16, 
+    borderRadius: 8, 
+    backgroundColor: '#EF4444', 
+    marginRight: 16 
+  },
+  recordingLabel: { fontSize: 14, color: '#94A3B8' },
+  
   instruction: { fontSize: 16, color: '#94A3B8', textAlign: 'center', marginBottom: 32 },
   recordButton: { flexDirection: 'row', backgroundColor: '#8B5CF6', paddingHorizontal: 32, paddingVertical: 18, borderRadius: 12, alignItems: 'center', gap: 12 },
   stopButton: { backgroundColor: '#EF4444' },
@@ -288,6 +380,7 @@ const styles = StyleSheet.create({
   formContainer: { flex: 1 },
   successBox: { alignItems: 'center', marginTop: 20, marginBottom: 32 },
   successText: { fontSize: 18, fontWeight: '600', color: '#8B5CF6', marginTop: 16 },
+  durationText: { fontSize: 14, color: '#94A3B8', marginTop: 8 },
   inputContainer: { marginBottom: 24 },
   label: { fontSize: 16, fontWeight: '600', color: '#fff', marginBottom: 8 },
   textArea: { backgroundColor: '#1E293B', borderRadius: 12, padding: 16, color: '#fff', fontSize: 16, minHeight: 100, textAlignVertical: 'top', borderWidth: 1, borderColor: '#334155' },
