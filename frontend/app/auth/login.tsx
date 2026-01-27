@@ -4,10 +4,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
 import { setupPushNotifications } from '../../utils/notifications';
-
-// Use Constants for more reliable env access in native builds
 import Constants from 'expo-constants';
 
 const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'https://guardwatch-14.preview.emergentagent.com';
@@ -28,29 +27,64 @@ export default function Login() {
     setLoading(true);
     try {
       console.log('Attempting login to:', `${BACKEND_URL}/api/auth/login`);
-      const response = await axios.post(`${BACKEND_URL}/api/auth/login`, { email, password });
       
-      await AsyncStorage.setItem('auth_token', response.data.token);
-      await AsyncStorage.setItem('user_id', response.data.user_id);
-      await AsyncStorage.setItem('user_role', response.data.role);
-      await AsyncStorage.setItem('is_premium', String(response.data.is_premium));
+      const response = await axios.post(`${BACKEND_URL}/api/auth/login`, { 
+        email: email.trim().toLowerCase(), // Sanitize input
+        password 
+      }, { timeout: 15000 }); // 15s timeout to prevent infinite hanging
 
-      // Setup push notifications after successful login
+      console.log('Login response received:', response.data?.role);
+
+      // SECURE STORAGE for sensitive data (with fallback for web)
       try {
-        const pushSetup = await setupPushNotifications();
-        console.log('Push notifications setup:', pushSetup ? 'success' : 'skipped');
+        await SecureStore.setItemAsync('auth_token', response.data.token);
+      } catch (secureStoreError) {
+        // Fallback to AsyncStorage if SecureStore fails (e.g., on web)
+        console.log('SecureStore unavailable, using AsyncStorage');
+        await AsyncStorage.setItem('auth_token', response.data.token);
+      }
+      
+      // ASYNC STORAGE for non-sensitive metadata
+      await AsyncStorage.multiSet([
+        ['user_id', String(response.data.user_id)],
+        ['user_role', response.data.role],
+        ['is_premium', String(response.data.is_premium)]
+      ]);
+
+      // Push Notification Setup
+      try {
+        await setupPushNotifications();
       } catch (pushError) {
-        console.log('Push notification setup error (non-fatal):', pushError);
+        console.warn('Push setup failed:', pushError);
       }
 
-      // Route based on role
+      // Navigate based on role
       if (response.data.role === 'security') {
         router.replace('/security/home');
       } else {
-        router.replace('/');
+        router.replace('/civil/home');
       }
+
     } catch (error: any) {
-      Alert.alert('Login Failed', error.response?.data?.detail || 'Invalid credentials');
+      console.error('Login Error:', error);
+      
+      let errorMessage = 'An unexpected error occurred';
+
+      if (error.response) {
+        // The server responded with a status code outside the 2xx range
+        errorMessage = error.response.data?.detail || 
+                       error.response.data?.message || 
+                       'Invalid credentials. Please try again.';
+      } else if (error.request) {
+        // The request was made but no response was received (Network Error)
+        errorMessage = 'Server is unreachable. Please check your internet connection.';
+      } else if (error.code === 'ECONNABORTED') {
+        errorMessage = 'Connection timed out. Please try again.';
+      } else {
+        errorMessage = error.message || 'Login failed. Please try again.';
+      }
+
+      Alert.alert('Login Failed', errorMessage);
     } finally {
       setLoading(false);
     }
@@ -69,12 +103,30 @@ export default function Login() {
           <View style={styles.form}>
             <View style={styles.inputContainer}>
               <Ionicons name="mail-outline" size={20} color="#64748B" />
-              <TextInput style={styles.input} placeholder="Email" placeholderTextColor="#64748B" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
+              <TextInput 
+                style={styles.input} 
+                placeholder="Email" 
+                placeholderTextColor="#64748B" 
+                value={email} 
+                onChangeText={setEmail} 
+                keyboardType="email-address" 
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
             </View>
 
             <View style={styles.inputContainer}>
               <Ionicons name="lock-closed-outline" size={20} color="#64748B" />
-              <TextInput style={styles.input} placeholder="Password" placeholderTextColor="#64748B" value={password} onChangeText={setPassword} secureTextEntry={!showPassword} />
+              <TextInput 
+                style={styles.input} 
+                placeholder="Password" 
+                placeholderTextColor="#64748B" 
+                value={password} 
+                onChangeText={setPassword} 
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
               <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
                 <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#64748B" />
               </TouchableOpacity>
