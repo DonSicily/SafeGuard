@@ -97,6 +97,9 @@
         "expo-task-manager"
       ],
       [
+        "expo-secure-store"
+      ],
+      [
         "expo-splash-screen",
         {
           "image": "./assets/images/splash-image.png",
