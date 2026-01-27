@@ -267,6 +267,8 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 20, fontWeight: '600', color: '#fff' },
   placeholder: { width: 32 },
   content: { flex: 1, padding: 24, justifyContent: 'space-between' },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  loadingText: { fontSize: 16, color: '#94A3B8', marginTop: 16 },
   iconContainer: { alignItems: 'center', marginTop: 40 },
   title: { fontSize: 28, fontWeight: 'bold', color: '#fff', textAlign: 'center', marginTop: 24 },
   description: { fontSize: 16, color: '#94A3B8', textAlign: 'center', lineHeight: 24, marginTop: 16 },
