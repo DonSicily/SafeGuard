@@ -249,10 +249,10 @@ async def register(user_data: UserRegister):
     
     # Create user
     user = {
-        'email': user_data.email,
+        'email': user_data.email.strip().lower(),
         'phone': user_data.phone,
         'full_name': user_data.full_name or '',
-        'password_hash': hash_password(user_data.password),
+        'password': hash_password(user_data.password),
         'role': user_data.role,
         'is_premium': False,
         'is_active': True,
