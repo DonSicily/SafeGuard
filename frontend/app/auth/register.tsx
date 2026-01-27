@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
 import Constants from 'expo-constants';
 import { setupPushNotifications } from '../../utils/notifications';
@@ -24,9 +25,25 @@ export default function Register() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  const validateEmail = (email: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
   const handleRegister = async () => {
+    // Validation
     if (!email || !password || !confirmPassword) {
       Alert.alert('Error', 'Please fill in all required fields');
+      return;
+    }
+
+    if (!validateEmail(email.trim())) {
+      Alert.alert('Error', 'Please enter a valid email address');
+      return;
+    }
+
+    if (password.length < 6) {
+      Alert.alert('Error', 'Password must be at least 6 characters');
       return;
     }
 
@@ -42,22 +59,36 @@ export default function Register() {
 
     setLoading(true);
     try {
+      console.log('Attempting registration to:', `${BACKEND_URL}/api/auth/register`);
+      
       const response = await axios.post(`${BACKEND_URL}/api/auth/register`, {
-        email,
-        phone: phone || null,
-        full_name: fullName || null,
+        email: email.trim().toLowerCase(),
+        phone: phone.trim() || null,
+        full_name: fullName.trim() || null,
         password,
         confirm_password: confirmPassword,
         role,
-        invite_code: inviteCode || null,
+        invite_code: inviteCode.trim().toUpperCase() || null,
         security_sub_role: role === 'security' ? securitySubRole : null,
-        team_name: role === 'security' ? teamName : null
-      });
+        team_name: role === 'security' ? teamName.trim() : null
+      }, { timeout: 15000 });
 
-      await AsyncStorage.setItem('auth_token', response.data.token);
-      await AsyncStorage.setItem('user_id', response.data.user_id);
-      await AsyncStorage.setItem('user_role', response.data.role);
-      await AsyncStorage.setItem('is_premium', String(response.data.is_premium));
+      console.log('Registration successful:', response.data?.role);
+
+      // SECURE STORAGE for sensitive data (with fallback for web)
+      try {
+        await SecureStore.setItemAsync('auth_token', response.data.token);
+      } catch (secureStoreError) {
+        console.log('SecureStore unavailable, using AsyncStorage');
+        await AsyncStorage.setItem('auth_token', response.data.token);
+      }
+
+      // ASYNC STORAGE for non-sensitive metadata
+      await AsyncStorage.multiSet([
+        ['user_id', String(response.data.user_id)],
+        ['user_role', response.data.role],
+        ['is_premium', String(response.data.is_premium)]
+      ]);
 
       // Setup push notifications after successful registration
       try {
@@ -67,17 +98,33 @@ export default function Register() {
         console.log('Push notification setup error (non-fatal):', pushError);
       }
 
-      Alert.alert('Success!', 'Registration successful', [
+      Alert.alert('Success!', 'Registration successful! Welcome to SafeGuard.', [
         { text: 'OK', onPress: () => {
           if (response.data.role === 'security') {
             router.replace('/security/home');
           } else {
-            router.replace('/');
+            router.replace('/civil/home');
           }
         }}
       ]);
     } catch (error: any) {
-      Alert.alert('Registration Failed', error.response?.data?.detail || 'An error occurred');
+      console.error('Registration Error:', error);
+      
+      let errorMessage = 'An unexpected error occurred';
+
+      if (error.response) {
+        errorMessage = error.response.data?.detail || 
+                       error.response.data?.message || 
+                       'Registration failed. Please try again.';
+      } else if (error.request) {
+        errorMessage = 'Server is unreachable. Please check your internet connection.';
+      } else if (error.code === 'ECONNABORTED') {
+        errorMessage = 'Connection timed out. Please try again.';
+      } else {
+        errorMessage = error.message || 'Registration failed. Please try again.';
+      }
+
+      Alert.alert('Registration Failed', errorMessage);
     } finally {
       setLoading(false);
     }
@@ -116,22 +163,54 @@ export default function Register() {
 
             <View style={styles.inputContainer}>
               <Ionicons name="person-outline" size={20} color="#64748B" />
-              <TextInput style={styles.input} placeholder="Full Name" placeholderTextColor="#64748B" value={fullName} onChangeText={setFullName} />
+              <TextInput 
+                style={styles.input} 
+                placeholder="Full Name" 
+                placeholderTextColor="#64748B" 
+                value={fullName} 
+                onChangeText={setFullName}
+                autoCapitalize="words"
+              />
             </View>
 
             <View style={styles.inputContainer}>
               <Ionicons name="mail-outline" size={20} color="#64748B" />
-              <TextInput style={styles.input} placeholder="Email" placeholderTextColor="#64748B" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
+              <TextInput 
+                style={styles.input} 
+                placeholder="Email *" 
+                placeholderTextColor="#64748B" 
+                value={email} 
+                onChangeText={setEmail} 
+                keyboardType="email-address" 
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
             </View>
 
             <View style={styles.inputContainer}>
               <Ionicons name="call-outline" size={20} color="#64748B" />
-              <TextInput style={styles.input} placeholder="Phone (optional)" placeholderTextColor="#64748B" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
+              <TextInput 
+                style={styles.input} 
+                placeholder="Phone (optional)" 
+                placeholderTextColor="#64748B" 
+                value={phone} 
+                onChangeText={setPhone} 
+                keyboardType="phone-pad" 
+              />
             </View>
 
             <View style={styles.inputContainer}>
               <Ionicons name="lock-closed-outline" size={20} color="#64748B" />
-              <TextInput style={styles.input} placeholder="Password" placeholderTextColor="#64748B" value={password} onChangeText={setPassword} secureTextEntry={!showPassword} />
+              <TextInput 
+                style={styles.input} 
+                placeholder="Password *" 
+                placeholderTextColor="#64748B" 
+                value={password} 
+                onChangeText={setPassword} 
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
               <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
                 <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#64748B" />
               </TouchableOpacity>
@@ -139,14 +218,31 @@ export default function Register() {
 
             <View style={styles.inputContainer}>
               <Ionicons name="lock-closed-outline" size={20} color="#64748B" />
-              <TextInput style={styles.input} placeholder="Confirm Password" placeholderTextColor="#64748B" value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry={!showPassword} />
+              <TextInput 
+                style={styles.input} 
+                placeholder="Confirm Password *" 
+                placeholderTextColor="#64748B" 
+                value={confirmPassword} 
+                onChangeText={setConfirmPassword} 
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
             </View>
 
             {role === 'security' && (
               <>
                 <View style={styles.inputContainer}>
                   <Ionicons name="key-outline" size={20} color="#64748B" />
-                  <TextInput style={styles.input} placeholder="Security Invite Code" placeholderTextColor="#64748B" value={inviteCode} onChangeText={setInviteCode} autoCapitalize="characters" />
+                  <TextInput 
+                    style={styles.input} 
+                    placeholder="Security Invite Code *" 
+                    placeholderTextColor="#64748B" 
+                    value={inviteCode} 
+                    onChangeText={setInviteCode} 
+                    autoCapitalize="characters"
+                    autoCorrect={false}
+                  />
                 </View>
 
                 <Text style={styles.label}>Your Role:</Text>
@@ -170,7 +266,13 @@ export default function Register() {
 
                 <View style={styles.inputContainer}>
                   <Ionicons name="business-outline" size={20} color="#64748B" />
-                  <TextInput style={styles.input} placeholder="Team Name (optional)" placeholderTextColor="#64748B" value={teamName} onChangeText={setTeamName} />
+                  <TextInput 
+                    style={styles.input} 
+                    placeholder="Team Name (optional)" 
+                    placeholderTextColor="#64748B" 
+                    value={teamName} 
+                    onChangeText={setTeamName} 
+                  />
                 </View>
               </>
             )}
@@ -182,7 +284,7 @@ export default function Register() {
 
             <View style={styles.footer}>
               <Text style={styles.footerText}>Already have an account? </Text>
-              <TouchableOpacity onPress={() => router.back()}>
+              <TouchableOpacity onPress={() => router.replace('/auth/login')}>
                 <Text style={styles.linkText}>Login</Text>
               </TouchableOpacity>
             </View>
