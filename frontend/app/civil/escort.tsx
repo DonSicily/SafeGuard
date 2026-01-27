@@ -139,7 +139,11 @@ export default function Escort() {
           longitude: location.coords.longitude,
           accuracy: location.coords.accuracy,
           timestamp: new Date().toISOString()
-        }, { headers: { Authorization: `Bearer ${token}` } });
+        }, { 
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 10000 
+        });
+        console.log('Location tracked');
       } catch (error) {
         console.error('Location tracking error:', error);
       }
@@ -153,11 +157,14 @@ export default function Escort() {
         setLoading(true);
         try {
           if (intervalRef.current) clearInterval(intervalRef.current);
-          const token = await AsyncStorage.getItem('auth_token');
+          const token = await getToken();
           await axios.post(`${BACKEND_URL}/api/escort/action`, {
             action: 'stop',
             location: { latitude: 0, longitude: 0, timestamp: new Date().toISOString() }
-          }, { headers: { Authorization: `Bearer ${token}` } });
+          }, { 
+            headers: { Authorization: `Bearer ${token}` },
+            timeout: 15000 
+          });
 
           setIsTracking(false);
           setSessionId(null);
@@ -170,6 +177,18 @@ export default function Escort() {
       }}
     ]);
   };
+
+  // Show loading while checking premium
+  if (checkingPremium) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#3B82F6" />
+          <Text style={styles.loadingText}>Checking access...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
