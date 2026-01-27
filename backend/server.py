@@ -787,6 +787,76 @@ async def get_nearby_reports(user = Depends(get_current_user)):
     
     return result
 
+@api_router.get("/security/track-user/{user_id}")
+async def track_user(user_id: str, user = Depends(get_current_user)):
+    """Get tracking data for a specific user (civil user being tracked)"""
+    if user.get('role') != 'security':
+        raise HTTPException(status_code=403, detail="Security users only")
+    
+    try:
+        # Get the civil user
+        target_user = await db.users.find_one({'_id': ObjectId(user_id)})
+        if not target_user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Check if user has active panic or escort session
+        active_panic = await db.panic_events.find_one({
+            'user_id': user_id,
+            'is_active': True
+        })
+        
+        active_escort = await db.escort_sessions.find_one({
+            'user_id': user_id,
+            'status': 'active'
+        })
+        
+        # Get latest location from panic or escort
+        latitude = None
+        longitude = None
+        last_update = None
+        is_active = False
+        
+        if active_panic:
+            is_active = True
+            if active_panic.get('locations') and len(active_panic['locations']) > 0:
+                latest = active_panic['locations'][-1]
+                latitude = latest.get('latitude')
+                longitude = latest.get('longitude')
+                last_update = latest.get('timestamp')
+            elif active_panic.get('location'):
+                coords = active_panic['location'].get('coordinates', [0, 0])
+                longitude = coords[0]
+                latitude = coords[1]
+                last_update = active_panic.get('activated_at')
+        elif active_escort:
+            is_active = True
+            if active_escort.get('route') and len(active_escort['route']) > 0:
+                latest = active_escort['route'][-1]
+                latitude = latest.get('latitude')
+                longitude = latest.get('longitude')
+                last_update = latest.get('timestamp')
+        elif target_user.get('current_location'):
+            coords = target_user['current_location'].get('coordinates', [0, 0])
+            longitude = coords[0]
+            latitude = coords[1]
+            last_update = target_user.get('last_location_update')
+        
+        return {
+            'user_id': user_id,
+            'full_name': target_user.get('full_name', ''),
+            'email': target_user.get('email', ''),
+            'phone': target_user.get('phone', ''),
+            'latitude': latitude,
+            'longitude': longitude,
+            'last_update': last_update.isoformat() if last_update else None,
+            'is_active': is_active,
+            'has_panic': active_panic is not None,
+            'has_escort': active_escort is not None
+        }
+    except Exception as e:
+        logger.error(f"Error tracking user: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @api_router.get("/security/nearby-panics")
 async def get_nearby_panics(user = Depends(get_current_user)):
     if user.get('role') != 'security':
