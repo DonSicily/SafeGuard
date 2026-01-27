@@ -712,32 +712,54 @@ async def get_nearby_panics(user = Depends(get_current_user)):
     if not team:
         return []
     
-    radius_meters = team.get('radius_km', 10.0) * 1000
-    
-    panics = await db.panic_events.find({
-        'is_active': True,
-        'location': {
-            '$near': {
-                '$geometry': team['teamLocation'],
-                '$maxDistance': radius_meters
-            }
-        }
-    }).sort('activated_at', -1).to_list(50)
+    # Check if team location is set
+    team_location = team.get('teamLocation')
+    if not team_location or team_location.get('coordinates', [0, 0]) == [0, 0]:
+        # Return all active panics if no location set
+        panics = await db.panic_events.find({'is_active': True}).sort('activated_at', -1).to_list(50)
+    else:
+        radius_meters = team.get('radius_km', 10.0) * 1000
+        try:
+            panics = await db.panic_events.find({
+                'is_active': True,
+                'location': {
+                    '$near': {
+                        '$geometry': team_location,
+                        '$maxDistance': radius_meters
+                    }
+                }
+            }).sort('activated_at', -1).to_list(50)
+        except Exception as e:
+            logger.warning(f"Geospatial query failed for panics: {e}")
+            panics = await db.panic_events.find({'is_active': True}).sort('activated_at', -1).to_list(50)
     
     result = []
     for p in panics:
         user_info = await db.users.find_one({'_id': ObjectId(p['user_id'])})
         if not user_info:
-            continue  # Skip if user not found
-        latest_location = p['locations'][-1] if p.get('locations') else None
+            user_info = {'email': 'Unknown', 'phone': ''}
+        
+        latest_location = p.get('locations', [])[-1] if p.get('locations') else None
+        
+        # Safely get coordinates
+        if latest_location:
+            lat = latest_location.get('latitude', 0)
+            lng = latest_location.get('longitude', 0)
+        elif p.get('location') and p['location'].get('coordinates'):
+            lat = p['location']['coordinates'][1]
+            lng = p['location']['coordinates'][0]
+        else:
+            lat, lng = 0, 0
+        
         result.append({
             'id': str(p['_id']),
             'user_email': user_info.get('email', 'Unknown'),
             'user_phone': user_info.get('phone', ''),
-            'activated_at': p['activated_at'],
-            'latitude': latest_location['latitude'] if latest_location else p['location']['coordinates'][1],
-            'longitude': latest_location['longitude'] if latest_location else p['location']['coordinates'][0],
-            'location_count': len(p.get('locations', []))
+            'activated_at': p.get('activated_at'),
+            'latitude': lat,
+            'longitude': lng,
+            'location_count': len(p.get('locations', [])),
+            'emergency_category': p.get('emergency_category', 'other')
         })
     
     return result
