@@ -599,6 +599,90 @@ async def create_report(report: ReportCreate, user = Depends(get_current_user)):
     
     return {'report_id': str(result.inserted_id), 'message': 'Report created'}
 
+class VideoUpload(BaseModel):
+    video_data: str  # Base64 encoded video
+    caption: Optional[str] = None
+    is_anonymous: bool = False
+    latitude: float
+    longitude: float
+    duration_seconds: Optional[int] = 0
+
+@api_router.post("/report/upload-video")
+async def upload_video_report(video: VideoUpload, user = Depends(get_current_user)):
+    """Upload video report with actual file data"""
+    if user.get('role') != 'civil':
+        raise HTTPException(status_code=403, detail="Only civil users can create reports")
+    
+    try:
+        import base64
+        import uuid
+        
+        # Decode base64 video data
+        video_bytes = base64.b64decode(video.video_data)
+        
+        # Generate unique filename
+        filename = f"video_{str(user['_id'])}_{uuid.uuid4().hex[:8]}.mp4"
+        
+        # Try to upload to Firebase Storage
+        file_url = await firebase_service.upload_file(
+            video_bytes,
+            filename,
+            'video/mp4',
+            'videos'
+        )
+        
+        # Create report record
+        report_data = {
+            'user_id': str(user['_id']),
+            'type': 'video',
+            'caption': video.caption or 'Video report',
+            'is_anonymous': video.is_anonymous,
+            'file_url': file_url,
+            'thumbnail': None,
+            'uploaded': True,
+            'duration_seconds': video.duration_seconds,
+            'location': {
+                'type': 'Point',
+                'coordinates': [video.longitude, video.latitude]
+            },
+            'geohash': geohash(video.latitude, video.longitude),
+            'created_at': datetime.utcnow()
+        }
+        
+        result = await db.civil_reports.insert_one(report_data)
+        
+        # Notify nearby security
+        try:
+            security_teams = await db.security_teams.find({
+                'teamLocation.coordinates': {
+                    '$near': {
+                        '$geometry': {'type': 'Point', 'coordinates': [video.longitude, video.latitude]},
+                        '$maxDistance': 50000
+                    }
+                }
+            }).to_list(100)
+            
+            security_user_ids = [team['user_id'] for team in security_teams]
+            if security_user_ids:
+                await send_push_notification(
+                    security_user_ids,
+                    "📹 New VIDEO Report",
+                    f"Video report submitted nearby: {video.caption or 'No caption'}",
+                    {'type': 'report', 'report_id': str(result.inserted_id)}
+                )
+        except Exception as notify_err:
+            logger.warning(f"Failed to notify security: {notify_err}")
+        
+        return {
+            'report_id': str(result.inserted_id),
+            'file_url': file_url,
+            'message': 'Video report uploaded successfully'
+        }
+        
+    except Exception as e:
+        logger.error(f"Video upload error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to upload video: {str(e)}")
+
 @api_router.get("/report/my-reports")
 async def get_my_reports(user = Depends(get_current_user)):
     reports = await db.civil_reports.find({'user_id': str(user['_id'])}).sort('created_at', -1).to_list(100)
