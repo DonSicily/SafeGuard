@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
 import Constants from 'expo-constants';
 
@@ -24,16 +25,49 @@ export default function AdminLogin() {
 
     setLoading(true);
     try {
-      const response = await axios.post(`${BACKEND_URL}/api/admin/login`, { email, password });
+      console.log('Admin login to:', `${BACKEND_URL}/api/admin/login`);
       
-      await AsyncStorage.setItem('auth_token', response.data.token);
-      await AsyncStorage.setItem('user_id', response.data.user_id);
-      await AsyncStorage.setItem('user_role', 'admin');
-      await AsyncStorage.setItem('admin_name', response.data.full_name || 'Admin');
+      const response = await axios.post(`${BACKEND_URL}/api/admin/login`, { 
+        email: email.trim().toLowerCase(),
+        password 
+      }, { timeout: 15000 });
+
+      console.log('Admin login response:', response.data?.role);
+
+      // SECURE STORAGE for sensitive data (with fallback for web)
+      try {
+        await SecureStore.setItemAsync('auth_token', response.data.token);
+      } catch (secureStoreError) {
+        console.log('SecureStore unavailable, using AsyncStorage');
+        await AsyncStorage.setItem('auth_token', response.data.token);
+      }
+      
+      // ASYNC STORAGE for non-sensitive metadata
+      await AsyncStorage.multiSet([
+        ['user_id', String(response.data.user_id)],
+        ['user_role', 'admin'],
+        ['admin_name', response.data.full_name || 'Admin']
+      ]);
 
       router.replace('/admin/dashboard');
     } catch (error: any) {
-      Alert.alert('Login Failed', error.response?.data?.detail || 'Invalid admin credentials');
+      console.error('Admin Login Error:', error);
+      
+      let errorMessage = 'An unexpected error occurred';
+
+      if (error.response) {
+        errorMessage = error.response.data?.detail || 
+                       error.response.data?.message || 
+                       'Invalid admin credentials.';
+      } else if (error.request) {
+        errorMessage = 'Server is unreachable. Please check your internet connection.';
+      } else if (error.code === 'ECONNABORTED') {
+        errorMessage = 'Connection timed out. Please try again.';
+      } else {
+        errorMessage = error.message || 'Login failed. Please try again.';
+      }
+
+      Alert.alert('Login Failed', errorMessage);
     } finally {
       setLoading(false);
     }
@@ -61,6 +95,7 @@ export default function AdminLogin() {
               onChangeText={setEmail}
               keyboardType="email-address"
               autoCapitalize="none"
+              autoCorrect={false}
             />
           </View>
 
@@ -73,6 +108,8 @@ export default function AdminLogin() {
               value={password}
               onChangeText={setPassword}
               secureTextEntry={!showPassword}
+              autoCapitalize="none"
+              autoCorrect={false}
             />
             <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
               <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={20} color="#64748B" />
