@@ -71,9 +71,10 @@ export default function SecurityNearby() {
       // First update our location
       await updateMyLocation();
 
-      const token = await AsyncStorage.getItem('auth_token');
+      const token = await getToken();
       const response = await axios.get(`${BACKEND_URL}/api/security/nearby`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 15000
       });
       
       setNearbyUsers(response.data.nearby_users || []);
@@ -87,6 +88,7 @@ export default function SecurityNearby() {
         setLocationError('Please update your location first');
       } else {
         console.error('Failed to load nearby users:', error);
+        setLocationError('Failed to load nearby security. Pull to refresh.');
       }
     } finally {
       setLoading(false);
@@ -112,10 +114,10 @@ export default function SecurityNearby() {
 
   const startChat = async (userId: string) => {
     try {
-      const token = await AsyncStorage.getItem('auth_token');
+      const token = await getToken();
       const response = await axios.post(`${BACKEND_URL}/api/chat/start`, 
         { to_user_id: userId },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}` }, timeout: 10000 }
       );
       router.push(`/security/chat/${response.data.conversation_id}`);
     } catch (error) {
