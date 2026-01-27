@@ -4,25 +4,74 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
+import axios from 'axios';
+import Constants from 'expo-constants';
 import { getPendingCount, processQueue } from '../../utils/offlineQueue';
+
+const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'https://guardwatch-14.preview.emergentagent.com';
 
 export default function CivilHome() {
   const router = useRouter();
   const [isPremium, setIsPremium] = useState(false);
   const [pendingUploads, setPendingUploads] = useState(0);
+  const [userName, setUserName] = useState('');
 
   useEffect(() => {
-    checkPremiumStatus();
+    checkUserStatus();
     checkPendingUploads();
     
-    // Check pending uploads periodically
     const interval = setInterval(checkPendingUploads, 30000);
     return () => clearInterval(interval);
   }, []);
 
-  const checkPremiumStatus = async () => {
-    const premium = await AsyncStorage.getItem('is_premium');
-    setIsPremium(premium === 'true');
+  const getToken = async () => {
+    try {
+      const token = await SecureStore.getItemAsync('auth_token');
+      if (token) return token;
+    } catch (e) {}
+    return await AsyncStorage.getItem('auth_token');
+  };
+
+  const checkUserStatus = async () => {
+    try {
+      // First check local storage
+      const storedPremium = await AsyncStorage.getItem('is_premium');
+      console.log('Stored premium value:', storedPremium);
+      
+      // Handle various formats
+      const isPremiumLocal = storedPremium === 'true' || storedPremium === '1' || storedPremium === 'True';
+      setIsPremium(isPremiumLocal);
+      
+      // Then verify with backend (optional but recommended)
+      const token = await getToken();
+      if (token) {
+        try {
+          const response = await axios.get(`${BACKEND_URL}/api/user/profile`, {
+            headers: { Authorization: `Bearer ${token}` },
+            timeout: 5000
+          });
+          
+          const backendPremium = response.data?.is_premium === true;
+          console.log('Backend premium value:', backendPremium);
+          
+          if (backendPremium !== isPremiumLocal) {
+            // Sync local with backend
+            await AsyncStorage.setItem('is_premium', String(backendPremium));
+            setIsPremium(backendPremium);
+          }
+          
+          if (response.data?.full_name) {
+            setUserName(response.data.full_name);
+          }
+        } catch (apiError) {
+          console.log('Could not verify premium with backend:', apiError);
+          // Use local value
+        }
+      }
+    } catch (error) {
+      console.error('Error checking premium status:', error);
+    }
   };
 
   const checkPendingUploads = async () => {
