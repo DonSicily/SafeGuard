@@ -659,32 +659,46 @@ async def get_nearby_reports(user = Depends(get_current_user)):
     if not team:
         return []
     
-    radius_meters = team.get('radius_km', 10.0) * 1000
-    
-    reports = await db.civil_reports.find({
-        'location': {
-            '$near': {
-                '$geometry': team['teamLocation'],
-                '$maxDistance': radius_meters
-            }
-        }
-    }).sort('created_at', -1).to_list(100)
+    # Check if team location is set
+    team_location = team.get('teamLocation')
+    if not team_location or team_location.get('coordinates', [0, 0]) == [0, 0]:
+        # Return all recent reports if no location set
+        reports = await db.civil_reports.find({}).sort('created_at', -1).to_list(50)
+    else:
+        radius_meters = team.get('radius_km', 10.0) * 1000
+        try:
+            reports = await db.civil_reports.find({
+                'location': {
+                    '$near': {
+                        '$geometry': team_location,
+                        '$maxDistance': radius_meters
+                    }
+                }
+            }).sort('created_at', -1).to_list(100)
+        except Exception as e:
+            # If geospatial query fails, return recent reports
+            logger.warning(f"Geospatial query failed: {e}")
+            reports = await db.civil_reports.find({}).sort('created_at', -1).to_list(50)
     
     result = []
     for r in reports:
         user_info = await db.users.find_one({'_id': ObjectId(r['user_id'])})
+        if not user_info:
+            user_info = {'email': 'Unknown', 'phone': ''}
+        
         result.append({
             'id': str(r['_id']),
-            'type': r['type'],
-            'caption': r.get('caption'),
-            'is_anonymous': r.get('is_anonymous'),
+            'type': r.get('type', 'unknown'),
+            'caption': r.get('caption', ''),
+            'is_anonymous': r.get('is_anonymous', False),
             'file_url': r.get('file_url'),
             'thumbnail': r.get('thumbnail'),
-            'latitude': r['location']['coordinates'][1],
-            'longitude': r['location']['coordinates'][0],
-            'created_at': r['created_at'],
-            'user_email': user_info['email'] if not r.get('is_anonymous') else 'Anonymous',
-            'user_phone': user_info.get('phone') if not r.get('is_anonymous') else 'Anonymous'
+            'latitude': r.get('location', {}).get('coordinates', [0, 0])[1] if r.get('location') else 0,
+            'longitude': r.get('location', {}).get('coordinates', [0, 0])[0] if r.get('location') else 0,
+            'created_at': r.get('created_at'),
+            'user_email': user_info.get('email', 'Unknown') if not r.get('is_anonymous') else 'Anonymous',
+            'user_phone': user_info.get('phone', '') if not r.get('is_anonymous') else 'Anonymous',
+            'duration_seconds': r.get('duration_seconds', 0)
         })
     
     return result
