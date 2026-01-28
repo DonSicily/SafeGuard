@@ -1698,7 +1698,7 @@ async def create_default_admins():
         if not existing:
             await db.users.insert_one({
                 "email": admin["email"],
-                "password_hash": hash_password(admin["password"]),
+                "password": hash_password(admin["password"]),  # Use 'password' not 'password_hash'
                 "full_name": admin["full_name"],
                 "role": "admin",
                 "is_active": True,
