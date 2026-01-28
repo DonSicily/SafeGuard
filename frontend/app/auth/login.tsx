@@ -3,11 +3,10 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingVi
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
-import { setupPushNotifications } from '../../utils/notifications';
 import Constants from 'expo-constants';
+import { saveAuthData, clearAuthData } from '../../utils/auth';
+import { setupPushNotifications } from '../../utils/notifications';
 
 const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'https://guardwatch-14.preview.emergentagent.com';
 
@@ -25,38 +24,41 @@ export default function Login() {
     }
 
     setLoading(true);
+    
+    // Clear any previous auth data before login attempt
+    await clearAuthData();
+    
     try {
-      console.log('Attempting login to:', `${BACKEND_URL}/api/auth/login`);
+      console.log('[Login] Attempting login to:', `${BACKEND_URL}/api/auth/login`);
+      console.log('[Login] Email:', email.trim().toLowerCase());
       
       const response = await axios.post(`${BACKEND_URL}/api/auth/login`, { 
-        email: email.trim().toLowerCase(), // Sanitize input
+        email: email.trim().toLowerCase(),
         password 
-      }, { timeout: 15000 }); // 15s timeout to prevent infinite hanging
+      }, { timeout: 15000 });
 
-      console.log('Login response received:', response.data?.role);
+      console.log('[Login] Response received, role:', response.data?.role);
 
-      // SECURE STORAGE for sensitive data (with fallback for web)
-      try {
-        await SecureStore.setItemAsync('auth_token', response.data.token);
-      } catch (secureStoreError) {
-        // Fallback to AsyncStorage if SecureStore fails (e.g., on web)
-        console.log('SecureStore unavailable, using AsyncStorage');
-        await AsyncStorage.setItem('auth_token', response.data.token);
+      // Save auth data using the centralized utility
+      const saved = await saveAuthData({
+        token: response.data.token,
+        user_id: String(response.data.user_id),
+        role: response.data.role,
+        is_premium: response.data.is_premium
+      });
+
+      if (!saved) {
+        throw new Error('Failed to save authentication data');
       }
-      
-      // ASYNC STORAGE for non-sensitive metadata
-      await AsyncStorage.multiSet([
-        ['user_id', String(response.data.user_id)],
-        ['user_role', response.data.role],
-        ['is_premium', String(response.data.is_premium)]
-      ]);
 
-      // Push Notification Setup
+      // Push Notification Setup (non-blocking)
       try {
         await setupPushNotifications();
       } catch (pushError) {
-        console.warn('Push setup failed:', pushError);
+        console.warn('[Login] Push setup failed:', pushError);
       }
+
+      console.log('[Login] Navigating to:', response.data.role === 'security' ? '/security/home' : '/civil/home');
 
       // Navigate based on role
       if (response.data.role === 'security') {
@@ -66,17 +68,17 @@ export default function Login() {
       }
 
     } catch (error: any) {
-      console.error('Login Error:', error);
+      console.error('[Login] Error:', error);
       
       let errorMessage = 'An unexpected error occurred';
 
       if (error.response) {
-        // The server responded with a status code outside the 2xx range
+        console.log('[Login] Server response:', error.response.status, error.response.data);
         errorMessage = error.response.data?.detail || 
                        error.response.data?.message || 
                        'Invalid credentials. Please try again.';
       } else if (error.request) {
-        // The request was made but no response was received (Network Error)
+        console.log('[Login] No response received');
         errorMessage = 'Server is unreachable. Please check your internet connection.';
       } else if (error.code === 'ECONNABORTED') {
         errorMessage = 'Connection timed out. Please try again.';
