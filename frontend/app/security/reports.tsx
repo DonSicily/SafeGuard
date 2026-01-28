@@ -89,16 +89,23 @@ export default function SecurityReports() {
 
   const loadReports = async () => {
     try {
-      const token = await AsyncStorage.getItem('auth_token');
+      const token = await getToken();
       const response = await axios.get(`${BACKEND_URL}/api/security/nearby-reports`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 15000
       });
       setReports(response.data);
     } catch (error) {
       console.error('Failed to load reports:', error);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
+  };
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadReports();
   };
 
   const renderReport = ({ item }: any) => (
