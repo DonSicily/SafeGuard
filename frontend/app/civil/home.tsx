@@ -34,16 +34,12 @@ export default function CivilHome() {
 
   const checkUserStatus = async () => {
     try {
-      // First check local storage
-      const storedPremium = await AsyncStorage.getItem('is_premium');
-      console.log('Stored premium value:', storedPremium);
+      // Get premium status from metadata
+      const metadata = await getUserMetadata();
+      setIsPremium(metadata.isPremium);
       
-      // Handle various formats
-      const isPremiumLocal = storedPremium === 'true' || storedPremium === '1' || storedPremium === 'True';
-      setIsPremium(isPremiumLocal);
-      
-      // Then verify with backend (optional but recommended)
-      const token = await getToken();
+      // Verify with backend
+      const token = await getAuthToken();
       if (token) {
         try {
           const response = await axios.get(`${BACKEND_URL}/api/user/profile`, {
@@ -52,24 +48,17 @@ export default function CivilHome() {
           });
           
           const backendPremium = response.data?.is_premium === true;
-          console.log('Backend premium value:', backendPremium);
-          
-          if (backendPremium !== isPremiumLocal) {
-            // Sync local with backend
-            await AsyncStorage.setItem('is_premium', String(backendPremium));
-            setIsPremium(backendPremium);
-          }
+          setIsPremium(backendPremium);
           
           if (response.data?.full_name) {
             setUserName(response.data.full_name);
           }
         } catch (apiError) {
-          console.log('Could not verify premium with backend:', apiError);
-          // Use local value
+          console.log('[CivilHome] Could not verify premium with backend:', apiError);
         }
       }
     } catch (error) {
-      console.error('Error checking premium status:', error);
+      console.error('[CivilHome] Error checking premium status:', error);
     }
   };
 
