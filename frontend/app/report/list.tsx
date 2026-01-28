@@ -163,6 +163,14 @@ export default function ReportList() {
           renderItem={renderReportItem}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl 
+              refreshing={refreshing} 
+              onRefresh={onRefresh}
+              tintColor="#3B82F6"
+              colors={['#3B82F6']}
+            />
+          }
         />
       )}
     </SafeAreaView>
