@@ -6,11 +6,13 @@ import {
   StyleSheet,
   FlatList,
   ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
 import Constants from 'expo-constants';
 
@@ -29,23 +31,39 @@ export default function ReportList() {
   const router = useRouter();
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     loadReports();
   }, []);
 
+  const getToken = async () => {
+    try {
+      const token = await SecureStore.getItemAsync('auth_token');
+      if (token) return token;
+    } catch (e) {}
+    return await AsyncStorage.getItem('auth_token');
+  };
+
   const loadReports = async () => {
     try {
-      const token = await AsyncStorage.getItem('auth_token');
+      const token = await getToken();
       const response = await axios.get(`${BACKEND_URL}/api/report/my-reports`, {
         headers: { Authorization: `Bearer ${token}` },
+        timeout: 15000
       });
       setReports(response.data);
     } catch (error) {
       console.error('Failed to load reports:', error);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
+  };
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadReports();
   };
 
   const formatDate = (dateString: string) => {
