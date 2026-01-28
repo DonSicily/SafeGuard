@@ -5,9 +5,10 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
-import Constants from 'expo-constants';
 import Slider from '@react-native-community/slider';
+import Constants from 'expo-constants';
 import { NativeMap } from '../../components/NativeMap';
 
 const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'https://guardwatch-14.preview.emergentagent.com';
@@ -29,6 +30,14 @@ export default function SetLocation() {
     loadSavedLocation();
   }, []);
 
+  const getToken = async () => {
+    try {
+      const token = await SecureStore.getItemAsync('auth_token');
+      if (token) return token;
+    } catch (e) {}
+    return await AsyncStorage.getItem('auth_token');
+  };
+
   const getCurrentLocation = async () => {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -48,9 +57,10 @@ export default function SetLocation() {
 
   const loadSavedLocation = async () => {
     try {
-      const token = await AsyncStorage.getItem('auth_token');
+      const token = await getToken();
       const response = await axios.get(`${BACKEND_URL}/api/security/team-location`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 10000
       });
       if (response.data.latitude !== 0 && response.data.longitude !== 0) {
         const coords = { latitude: response.data.latitude, longitude: response.data.longitude };
@@ -66,16 +76,31 @@ export default function SetLocation() {
   const saveTeamLocation = async () => {
     setLoading(true);
     try {
-      const token = await AsyncStorage.getItem('auth_token');
-      await axios.post(`${BACKEND_URL}/api/security/set-location`, {
+      const token = await getToken();
+      console.log('Saving location:', markerCoords, 'Radius:', radiusKm);
+      
+      const response = await axios.post(`${BACKEND_URL}/api/security/set-location`, {
         latitude: markerCoords.latitude,
         longitude: markerCoords.longitude,
         radius_km: radiusKm
-      }, { headers: { Authorization: `Bearer ${token}` } });
+      }, { 
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 15000
+      });
 
-      Alert.alert('Success', 'Team location updated', [{ text: 'OK', onPress: () => router.replace('/security/home') }]);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to save location');
+      console.log('Location saved:', response.data);
+      Alert.alert('Success', 'Team location updated successfully!', [
+        { text: 'OK', onPress: () => router.replace('/security/home') }
+      ]);
+    } catch (error: any) {
+      console.error('Save location error:', error);
+      let errorMsg = 'Failed to save location. Please try again.';
+      if (error.response?.data?.detail) {
+        errorMsg = error.response.data.detail;
+      } else if (error.request) {
+        errorMsg = 'Network error. Please check your connection.';
+      }
+      Alert.alert('Error', errorMsg);
     } finally {
       setLoading(false);
     }
@@ -100,6 +125,11 @@ export default function SetLocation() {
       />
 
       <View style={styles.controls}>
+        <View style={styles.coordinatesDisplay}>
+          <Text style={styles.coordLabel}>Lat: {markerCoords.latitude.toFixed(4)}</Text>
+          <Text style={styles.coordLabel}>Lng: {markerCoords.longitude.toFixed(4)}</Text>
+        </View>
+        
         <View style={styles.radiusControl}>
           <Text style={styles.radiusLabel}>Search Radius: {radiusKm}km</Text>
           <Slider
@@ -116,10 +146,21 @@ export default function SetLocation() {
         </View>
 
         <TouchableOpacity style={styles.saveButton} onPress={saveTeamLocation} disabled={loading}>
-          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>Save Location</Text>}
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <>
+              <Ionicons name="save" size={20} color="#fff" />
+              <Text style={styles.saveButtonText}>Save Location</Text>
+            </>
+          )}
         </TouchableOpacity>
 
-        <Text style={styles.helpText}>Tap on map to set location. Adjust radius to set coverage area.</Text>
+        <Text style={styles.helpText}>
+          {Platform.OS === 'web' 
+            ? 'Enter coordinates manually or use the app on mobile for map selection.'
+            : 'Tap on map to set location. Adjust radius to set coverage area.'}
+        </Text>
       </View>
     </SafeAreaView>
   );
@@ -132,10 +173,12 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 20, fontWeight: '600', color: '#fff' },
   placeholder: { width: 32 },
   controls: { backgroundColor: '#1E293B', padding: 20, borderTopLeftRadius: 24, borderTopRightRadius: 24 },
+  coordinatesDisplay: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 16, backgroundColor: '#0F172A', padding: 12, borderRadius: 8 },
+  coordLabel: { fontSize: 14, color: '#94A3B8', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
   radiusControl: { marginBottom: 20 },
   radiusLabel: { fontSize: 16, fontWeight: '600', color: '#fff', marginBottom: 12 },
   slider: { width: '100%', height: 40 },
-  saveButton: { backgroundColor: '#3B82F6', borderRadius: 12, paddingVertical: 16, alignItems: 'center', marginBottom: 12 },
+  saveButton: { flexDirection: 'row', backgroundColor: '#3B82F6', borderRadius: 12, paddingVertical: 16, alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12 },
   saveButtonText: { fontSize: 18, fontWeight: '600', color: '#fff' },
   helpText: { fontSize: 12, color: '#94A3B8', textAlign: 'center', lineHeight: 18 },
 });
