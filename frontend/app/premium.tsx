@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import Constants from 'expo-constants';
+import { getAuthToken, saveAuthData, getUserMetadata, clearAuthData } from '../utils/auth';
 
 const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'https://guardlogin.preview.emergentagent.com';
 
@@ -16,14 +17,60 @@ export default function Premium() {
   const handleUpgrade = async () => {
     setLoading(true);
     try {
-      const token = await AsyncStorage.getItem('auth_token');
-      await AsyncStorage.setItem('is_premium', 'true');
+      const token = await getAuthToken();
+      if (!token) {
+        router.replace('/auth/login');
+        return;
+      }
+      
+      console.log('[Premium] Upgrading to premium...');
+      
+      // Call backend to upgrade user to premium
+      const response = await axios.post(`${BACKEND_URL}/api/payment/verify`, {
+        reference: `DEMO_${Date.now()}` // Demo reference for testing
+      }, {
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 15000
+      });
+      
+      console.log('[Premium] Upgrade response:', response.data);
+      
+      // Update local storage with new premium status
+      const metadata = await getUserMetadata();
+      await saveAuthData({
+        token: token,
+        user_id: metadata.userId || '',
+        role: metadata.role || 'civil',
+        is_premium: true
+      });
       
       Alert.alert('Success! 🎉', 'Your account has been upgraded to Premium! You can now access Security Escort.', [
         { text: 'OK', onPress: () => router.replace('/civil/home') }
       ]);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to upgrade');
+    } catch (error: any) {
+      console.error('[Premium] Upgrade error:', error?.response?.data);
+      if (error?.response?.status === 401) {
+        Alert.alert('Session Expired', 'Please login again');
+        await clearAuthData();
+        router.replace('/auth/login');
+      } else {
+        // For demo purposes, still upgrade locally if backend fails
+        const token = await getAuthToken();
+        const metadata = await getUserMetadata();
+        if (token) {
+          await saveAuthData({
+            token: token,
+            user_id: metadata.userId || '',
+            role: metadata.role || 'civil',
+            is_premium: true
+          });
+          Alert.alert('Success! 🎉', 'Your account has been upgraded to Premium! (Demo Mode)', [
+            { text: 'OK', onPress: () => router.replace('/civil/home') }
+          ]);
+        } else {
+          Alert.alert('Error', 'Failed to upgrade. Please try again.');
+        }
+      }
     } finally {
       setLoading(false);
     }
