@@ -104,7 +104,12 @@ export default function Escort() {
       await Location.requestBackgroundPermissionsAsync();
 
       const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-      const token = await getToken();
+      const token = await getAuthToken();
+      if (!token) {
+        router.replace('/auth/login');
+        return;
+      }
+      
       const response = await axios.post(`${BACKEND_URL}/api/escort/action`, {
         action: 'start',
         location: {
@@ -123,7 +128,12 @@ export default function Escort() {
       startLocationTracking(token!);
       Alert.alert('Success', 'Escort tracking started');
     } catch (error: any) {
-      console.error('Start escort error:', error);
+      console.error('[Escort] Start error:', error?.response?.data);
+      if (error?.response?.status === 401) {
+        await clearAuthData();
+        router.replace('/auth/login');
+        return;
+      }
       let errorMessage = 'Failed to start escort';
       if (error.response?.data?.detail) {
         errorMessage = error.response.data.detail;
