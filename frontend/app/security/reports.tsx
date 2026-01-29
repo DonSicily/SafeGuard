@@ -3,11 +3,10 @@ import { View, Text, TouchableOpacity, StyleSheet, FlatList, ActivityIndicator, 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
 import Constants from 'expo-constants';
 import { Audio } from 'expo-av';
+import { getAuthToken, clearAuthData } from '../../utils/auth';
 
 const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'https://guardlogin.preview.emergentagent.com';
 
@@ -18,14 +17,6 @@ export default function SecurityReports() {
   const [refreshing, setRefreshing] = useState(false);
   const [sound, setSound] = useState<Audio.Sound | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
-
-  const getToken = async () => {
-    try {
-      const token = await SecureStore.getItemAsync('auth_token');
-      if (token) return token;
-    } catch (e) {}
-    return await AsyncStorage.getItem('auth_token');
-  };
 
   useEffect(() => {
     loadReports();
