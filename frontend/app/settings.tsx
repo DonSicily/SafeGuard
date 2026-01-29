@@ -3,9 +3,9 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView, TextInput, Alert,
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import Constants from 'expo-constants';
+import { getAuthToken, clearAuthData, getUserMetadata } from '../utils/auth';
 
 const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'https://guardlogin.preview.emergentagent.com';
 
@@ -14,26 +14,46 @@ const ICON_OPTIONS = ['shield', 'shield-checkmark', 'lock-closed', 'lock-open', 
 export default function Settings() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
   const [appName, setAppName] = useState('SafeGuard');
   const [selectedIcon, setSelectedIcon] = useState('shield');
   const [showIconPicker, setShowIconPicker] = useState(false);
   const [userProfile, setUserProfile] = useState<any>(null);
 
   useEffect(() => {
-    loadProfile();
+    initializeSettings();
   }, []);
+
+  const initializeSettings = async () => {
+    setPageLoading(true);
+    const token = await getAuthToken();
+    if (!token) {
+      router.replace('/auth/login');
+      return;
+    }
+    await loadProfile();
+    setPageLoading(false);
+  };
 
   const loadProfile = async () => {
     try {
-      const token = await AsyncStorage.getItem('auth_token');
+      const token = await getAuthToken();
+      if (!token) return;
+      
       const response = await axios.get(`${BACKEND_URL}/api/user/profile`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 10000
       });
+      console.log('[Settings] Profile loaded');
       setUserProfile(response.data);
       setAppName(response.data.app_name || 'SafeGuard');
       setSelectedIcon(response.data.app_logo || 'shield');
-    } catch (error) {
-      console.error('Failed to load profile:', error);
+    } catch (error: any) {
+      console.error('[Settings] Failed to load profile:', error?.response?.status);
+      if (error?.response?.status === 401) {
+        await clearAuthData();
+        router.replace('/auth/login');
+      }
     }
   };
 
@@ -45,15 +65,32 @@ export default function Settings() {
 
     setLoading(true);
     try {
-      const token = await AsyncStorage.getItem('auth_token');
+      const token = await getAuthToken();
+      if (!token) {
+        router.replace('/auth/login');
+        return;
+      }
+      
+      console.log('[Settings] Saving customization...');
       await axios.put(`${BACKEND_URL}/api/user/customize-app`, {
         app_name: appName,
         app_logo: selectedIcon
-      }, { headers: { Authorization: `Bearer ${token}` } });
+      }, { 
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 10000
+      });
 
+      console.log('[Settings] Customization saved');
       Alert.alert('Success', 'App customization saved');
     } catch (error: any) {
-      Alert.alert('Error', 'Failed to save customization');
+      console.error('[Settings] Save error:', error?.response?.data);
+      if (error?.response?.status === 401) {
+        Alert.alert('Session Expired', 'Please login again');
+        await clearAuthData();
+        router.replace('/auth/login');
+      } else {
+        Alert.alert('Error', 'Failed to save customization');
+      }
     } finally {
       setLoading(false);
     }
