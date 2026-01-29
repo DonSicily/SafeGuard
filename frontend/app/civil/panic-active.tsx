@@ -161,7 +161,7 @@ export default function PanicActive() {
 
   const deactivatePanicMode = async () => {
     try {
-      const token = await AsyncStorage.getItem('auth_token');
+      const token = await getAuthToken();
       if (intervalRef.current) clearInterval(intervalRef.current);
       
       // Stop background tracking if it was started
@@ -172,10 +172,14 @@ export default function PanicActive() {
       } catch (bgError) {
         console.log('Background tracking stop error (expected in Expo Go):', bgError);
       }
-      await axios.post(`${BACKEND_URL}/api/panic/deactivate`, {}, { headers: { Authorization: `Bearer ${token}` } });
+      
+      if (token) {
+        await axios.post(`${BACKEND_URL}/api/panic/deactivate`, {}, { headers: { Authorization: `Bearer ${token}` } });
+      }
       setIsTracking(false);
       Alert.alert('Success', 'Panic mode deactivated', [{ text: 'OK', onPress: () => router.replace('/civil/home') }]);
     } catch (error) {
+      console.error('[PanicActive] Deactivation error:', error);
       Alert.alert('Error', 'Failed to deactivate');
     }
   };
