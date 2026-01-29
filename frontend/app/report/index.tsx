@@ -149,7 +149,11 @@ export default function Report() {
         }
       }
 
-      const token = await getToken();
+      const token = await getAuthToken();
+      if (!token) {
+        router.replace('/auth/login');
+        return;
+      }
       
       // Step 1: Read the video file
       setUploadProgress(10);
