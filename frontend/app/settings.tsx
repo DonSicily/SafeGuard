@@ -183,6 +183,40 @@ export default function Settings() {
         </View>
 
         <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Emergency Contacts</Text>
+          <Text style={styles.sectionDescription}>These contacts will be notified during panic events</Text>
+          <View style={styles.emergencyCard}>
+            <View style={styles.contactItem}>
+              <View style={styles.contactIcon}>
+                <Ionicons name="call" size={24} color="#EF4444" />
+              </View>
+              <View style={styles.contactInfo}>
+                <Text style={styles.contactLabel}>Local Police</Text>
+                <Text style={styles.contactNumber}>911</Text>
+              </View>
+            </View>
+            <View style={styles.contactItem}>
+              <View style={styles.contactIcon}>
+                <Ionicons name="medkit" size={24} color="#10B981" />
+              </View>
+              <View style={styles.contactInfo}>
+                <Text style={styles.contactLabel}>Medical Emergency</Text>
+                <Text style={styles.contactNumber}>112</Text>
+              </View>
+            </View>
+            <View style={styles.contactItem}>
+              <View style={styles.contactIcon}>
+                <Ionicons name="flame" size={24} color="#F59E0B" />
+              </View>
+              <View style={styles.contactInfo}>
+                <Text style={styles.contactLabel}>Fire Department</Text>
+                <Text style={styles.contactNumber}>101</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.section}>
           <Text style={styles.sectionTitle}>About</Text>
           <View style={styles.aboutCard}>
             <Text style={styles.aboutText}>SafeGuard Security App</Text>
