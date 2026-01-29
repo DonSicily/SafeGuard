@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, RefreshControl, Alert, Dimensions, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, RefreshControl, Alert, Dimensions, ActivityIndicator, Platform, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,8 +7,10 @@ import * as Location from 'expo-location';
 import axios from 'axios';
 import Constants from 'expo-constants';
 import { getAuthToken, clearAuthData } from '../../utils/auth';
+import { NativeMap } from '../../components/NativeMap';
 
 const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'https://guardlogin.preview.emergentagent.com';
+const { width } = Dimensions.get('window');
 
 export default function SecurityNearby() {
   const router = useRouter();
@@ -18,6 +20,7 @@ export default function SecurityNearby() {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [locationError, setLocationError] = useState('');
+  const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
 
   const goBack = () => {
     router.replace('/security/home');
