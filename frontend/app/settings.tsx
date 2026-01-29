@@ -262,4 +262,10 @@ const styles = StyleSheet.create({
   aboutText: { fontSize: 18, fontWeight: '600', color: '#fff', marginBottom: 8 },
   aboutVersion: { fontSize: 14, color: '#64748B', marginBottom: 16 },
   aboutDescription: { fontSize: 14, color: '#94A3B8', textAlign: 'center', lineHeight: 20 },
+  emergencyCard: { backgroundColor: '#1E293B', borderRadius: 12, padding: 16 },
+  contactItem: { flexDirection: 'row', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderBottomColor: '#334155' },
+  contactIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#0F172A', justifyContent: 'center', alignItems: 'center', marginRight: 16 },
+  contactInfo: { flex: 1 },
+  contactLabel: { fontSize: 16, fontWeight: '600', color: '#fff', marginBottom: 2 },
+  contactNumber: { fontSize: 14, color: '#64748B' },
 });
