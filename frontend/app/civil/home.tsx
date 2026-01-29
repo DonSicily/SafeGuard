@@ -92,7 +92,9 @@ export default function CivilHome() {
   };
 
   const handleLogout = async () => {
-    await AsyncStorage.clear();
+    console.log('[CivilHome] Logout initiated');
+    await clearAuthData();
+    console.log('[CivilHome] Auth data cleared, navigating to login');
     router.replace('/auth/login');
   };
 
