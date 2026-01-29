@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { getAuthToken, getUserMetadata } from '../utils/auth';
 
 export default function Index() {
   const router = useRouter();
@@ -22,29 +22,41 @@ export default function Index() {
 
   const checkAuth = async () => {
     try {
-      const token = await AsyncStorage.getItem('auth_token');
-      const role = await AsyncStorage.getItem('user_role');
+      console.log('[Index] Checking authentication...');
+      const token = await getAuthToken();
+      const metadata = await getUserMetadata();
+      
+      console.log('[Index] Token exists:', !!token, 'Role:', metadata.role);
       
       if (!token) {
         // No token, go to login
+        console.log('[Index] No token, redirecting to login');
         setTimeout(() => {
           router.replace('/auth/login');
         }, 100);
       } else {
-        setUserRole(role);
-        if (role === 'security') {
+        setUserRole(metadata.role);
+        if (metadata.role === 'security') {
           // Security users go directly to their dashboard
+          console.log('[Index] Security user, redirecting to security home');
           setTimeout(() => {
             router.replace('/security/home');
           }, 100);
+        } else if (metadata.role === 'admin') {
+          // Admin users go to admin dashboard
+          console.log('[Index] Admin user, redirecting to admin dashboard');
+          setTimeout(() => {
+            router.replace('/admin/dashboard');
+          }, 100);
         } else {
           // Civil users see panic prompt
+          console.log('[Index] Civil user, showing panic prompt');
           setShowPanicPrompt(true);
           setLoading(false);
         }
       }
     } catch (error) {
-      console.error('Auth check error:', error);
+      console.error('[Index] Auth check error:', error);
       setError('Failed to check authentication');
       // Fallback to login
       setTimeout(() => {
