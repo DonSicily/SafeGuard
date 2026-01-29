@@ -4,12 +4,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
 import Slider from '@react-native-community/slider';
 import Constants from 'expo-constants';
 import { NativeMap } from '../../components/NativeMap';
+import { getAuthToken, clearAuthData } from '../../utils/auth';
 
 const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'https://guardlogin.preview.emergentagent.com';
 
@@ -26,16 +25,17 @@ export default function SetLocation() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    getCurrentLocation();
-    loadSavedLocation();
+    initializeLocation();
   }, []);
 
-  const getToken = async () => {
-    try {
-      const token = await SecureStore.getItemAsync('auth_token');
-      if (token) return token;
-    } catch (e) {}
-    return await AsyncStorage.getItem('auth_token');
+  const initializeLocation = async () => {
+    const token = await getAuthToken();
+    if (!token) {
+      router.replace('/auth/login');
+      return;
+    }
+    await getCurrentLocation();
+    await loadSavedLocation();
   };
 
   const getCurrentLocation = async () => {
@@ -51,33 +51,45 @@ export default function SetLocation() {
         setMarkerCoords(coords);
       }
     } catch (error) {
-      console.error('Failed to get location:', error);
+      console.error('[SetLocation] Failed to get location:', error);
     }
   };
 
   const loadSavedLocation = async () => {
     try {
-      const token = await getToken();
+      const token = await getAuthToken();
+      if (!token) return;
+      
       const response = await axios.get(`${BACKEND_URL}/api/security/team-location`, {
         headers: { Authorization: `Bearer ${token}` },
         timeout: 10000
       });
+      console.log('[SetLocation] Saved location loaded:', response.data);
       if (response.data.latitude !== 0 && response.data.longitude !== 0) {
         const coords = { latitude: response.data.latitude, longitude: response.data.longitude };
         setMarkerCoords(coords);
         setRegion({ ...coords, latitudeDelta: 0.5, longitudeDelta: 0.5 });
-        setRadiusKm(response.data.radius_km);
+        setRadiusKm(response.data.radius_km || 10);
       }
-    } catch (error) {
-      console.error('Failed to load saved location:', error);
+    } catch (error: any) {
+      console.error('[SetLocation] Failed to load saved location:', error?.response?.status);
+      if (error?.response?.status === 401) {
+        await clearAuthData();
+        router.replace('/auth/login');
+      }
     }
   };
 
   const saveTeamLocation = async () => {
     setLoading(true);
     try {
-      const token = await getToken();
-      console.log('Saving location:', markerCoords, 'Radius:', radiusKm);
+      const token = await getAuthToken();
+      if (!token) {
+        router.replace('/auth/login');
+        return;
+      }
+      
+      console.log('[SetLocation] Saving location:', markerCoords, 'Radius:', radiusKm);
       
       const response = await axios.post(`${BACKEND_URL}/api/security/set-location`, {
         latitude: markerCoords.latitude,
@@ -88,13 +100,19 @@ export default function SetLocation() {
         timeout: 15000
       });
 
-      console.log('Location saved:', response.data);
+      console.log('[SetLocation] Location saved:', response.data);
       Alert.alert('Success', 'Team location updated successfully!', [
         { text: 'OK', onPress: () => router.replace('/security/home') }
       ]);
     } catch (error: any) {
-      console.error('Save location error:', error);
+      console.error('[SetLocation] Save location error:', error?.response?.data);
       let errorMsg = 'Failed to save location. Please try again.';
+      if (error?.response?.status === 401) {
+        Alert.alert('Session Expired', 'Please login again');
+        await clearAuthData();
+        router.replace('/auth/login');
+        return;
+      }
       if (error.response?.data?.detail) {
         errorMsg = error.response.data.detail;
       } else if (error.request) {
