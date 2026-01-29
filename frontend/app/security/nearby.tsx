@@ -218,9 +218,18 @@ export default function SecurityNearby() {
           <Ionicons name="call" size={20} color="#10B981" />
           <Text style={styles.actionText}>Call</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.actionButton} onPress={() => Alert.alert('Location', `${user.location?.coordinates?.[1]?.toFixed(4)}, ${user.location?.coordinates?.[0]?.toFixed(4)}`)}>
+        <TouchableOpacity 
+          style={styles.actionButton} 
+          onPress={() => {
+            if (user.location?.coordinates) {
+              openInMaps(user.location.coordinates[1], user.location.coordinates[0], user.full_name || 'Security Agent');
+            } else {
+              Alert.alert('Location', 'Location not available');
+            }
+          }}
+        >
           <Ionicons name="location" size={20} color="#F59E0B" />
-          <Text style={styles.actionText}>Locate</Text>
+          <Text style={styles.actionText}>Navigate</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -233,9 +242,20 @@ export default function SecurityNearby() {
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.title}>Nearby Security</Text>
-        <TouchableOpacity onPress={() => router.push('/security/settings')}>
-          <Ionicons name="settings" size={24} color="#fff" />
-        </TouchableOpacity>
+        <View style={styles.viewToggle}>
+          <TouchableOpacity 
+            style={[styles.toggleButton, viewMode === 'list' && styles.toggleActive]}
+            onPress={() => setViewMode('list')}
+          >
+            <Ionicons name="list" size={20} color={viewMode === 'list' ? '#fff' : '#64748B'} />
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.toggleButton, viewMode === 'map' && styles.toggleActive]}
+            onPress={() => setViewMode('map')}
+          >
+            <Ionicons name="map" size={20} color={viewMode === 'map' ? '#fff' : '#64748B'} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Location Status */}
@@ -250,13 +270,13 @@ export default function SecurityNearby() {
         </View>
         <TouchableOpacity style={styles.updateButton} onPress={handleUpdateLocation}>
           <Ionicons name="refresh" size={18} color="#3B82F6" />
-          <Text style={styles.updateButtonText}>Update Location</Text>
+          <Text style={styles.updateButtonText}>Update</Text>
         </TouchableOpacity>
       </View>
 
       <View style={styles.radiusInfo}>
         <Ionicons name="radio-outline" size={16} color="#64748B" />
-        <Text style={styles.radiusText}>Showing users within {myRadius}km radius</Text>
+        <Text style={styles.radiusText}>Showing users within {myRadius}km radius ({nearbyUsers.length} found)</Text>
       </View>
 
       {locationError ? (
@@ -266,17 +286,41 @@ export default function SecurityNearby() {
         </View>
       ) : null}
 
-      <ScrollView 
-        style={styles.usersList}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#F59E0B" />}
-      >
-        {nearbyUsers.length > 0 ? (
-          nearbyUsers.map(renderUser)
-        ) : (
-          <View style={styles.empty}>
-            <Ionicons name="people-outline" size={48} color="#64748B" />
-            <Text style={styles.emptyText}>
-              {loading ? 'Loading nearby users...' : 'No security users nearby'}
+      {viewMode === 'map' && myLocation ? (
+        <View style={styles.mapContainer}>
+          <NativeMap
+            region={{
+              latitude: myLocation.latitude,
+              longitude: myLocation.longitude,
+              latitudeDelta: 0.1,
+              longitudeDelta: 0.1,
+            }}
+            markers={getMapMarkers()}
+            style={styles.map}
+          />
+          <View style={styles.mapLegend}>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: '#EF4444' }]} />
+              <Text style={styles.legendText}>You</Text>
+            </View>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: '#3B82F6' }]} />
+              <Text style={styles.legendText}>Security Agents</Text>
+            </View>
+          </View>
+        </View>
+      ) : (
+        <ScrollView 
+          style={styles.usersList}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#F59E0B" />}
+        >
+          {nearbyUsers.length > 0 ? (
+            nearbyUsers.map(renderUser)
+          ) : (
+            <View style={styles.empty}>
+              <Ionicons name="people-outline" size={48} color="#64748B" />
+              <Text style={styles.emptyText}>
+                {loading ? 'Loading nearby users...' : 'No security users nearby'}
             </Text>
             <Text style={styles.emptySubtext}>
               Update your location and increase radius in settings
