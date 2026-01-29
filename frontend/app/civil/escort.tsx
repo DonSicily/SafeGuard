@@ -4,10 +4,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
 import Constants from 'expo-constants';
+import { getAuthToken, getUserMetadata, clearAuthData } from '../../utils/auth';
 
 const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'https://guardlogin.preview.emergentagent.com';
 
@@ -27,30 +26,32 @@ export default function Escort() {
     };
   }, []);
 
-  const getToken = async () => {
-    try {
-      const token = await SecureStore.getItemAsync('auth_token');
-      if (token) return token;
-    } catch (e) {}
-    return await AsyncStorage.getItem('auth_token');
-  };
-
   const checkPremiumStatus = async () => {
     setCheckingPremium(true);
     try {
-      const token = await getToken();
+      const token = await getAuthToken();
       if (!token) {
         Alert.alert('Error', 'Please login again');
         router.replace('/auth/login');
         return;
       }
 
+      // First check local metadata
+      const metadata = await getUserMetadata();
+      if (metadata.isPremium) {
+        setIsPremium(true);
+        setCheckingPremium(false);
+        return;
+      }
+
+      // Then verify with backend
       const response = await axios.get(`${BACKEND_URL}/api/user/profile`, {
         headers: { Authorization: `Bearer ${token}` },
         timeout: 10000
       });
 
       const premium = response.data?.is_premium === true;
+      console.log('[Escort] Premium status from backend:', premium);
       setIsPremium(premium);
       
       if (!premium) {
@@ -64,10 +65,15 @@ export default function Escort() {
         );
       }
     } catch (error: any) {
-      console.error('Error checking premium:', error);
-      // Fallback to local storage
-      const storedPremium = await AsyncStorage.getItem('is_premium');
-      const premium = storedPremium === 'true' || storedPremium === 'True';
+      console.error('[Escort] Error checking premium:', error?.response?.status);
+      if (error?.response?.status === 401) {
+        await clearAuthData();
+        router.replace('/auth/login');
+        return;
+      }
+      // Fallback to local metadata
+      const metadata = await getUserMetadata();
+      const premium = metadata.isPremium;
       setIsPremium(premium);
       
       if (!premium) {
