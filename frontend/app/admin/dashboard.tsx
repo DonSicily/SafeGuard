@@ -226,4 +226,6 @@ const styles = StyleSheet.create({
   actionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   actionCard: { width: '31%', backgroundColor: '#1E293B', borderRadius: 16, padding: 16, alignItems: 'center', gap: 8 },
   actionText: { fontSize: 12, color: '#94A3B8', textAlign: 'center' },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  loadingText: { color: '#94A3B8', marginTop: 16, fontSize: 16 },
 });
