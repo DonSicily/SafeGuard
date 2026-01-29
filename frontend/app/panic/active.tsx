@@ -113,11 +113,16 @@ export default function PanicActive() {
       }
 
       // Activate panic in backend
-      const token = await AsyncStorage.getItem('auth_token');
+      const token = await getAuthToken();
+      if (!token) {
+        router.replace('/auth/login');
+        return;
+      }
+      
       const response = await axios.post(
         `${BACKEND_URL}/api/panic/activate`,
         { activated: true },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}` }, timeout: 15000 }
       );
 
       setPanicId(response.data.panic_id);
@@ -140,8 +145,13 @@ export default function PanicActive() {
         ]
       );
     } catch (error: any) {
+      if (error?.response?.status === 401) {
+        await clearAuthData();
+        router.replace('/auth/login');
+        return;
+      }
       Alert.alert('Error', 'Failed to activate panic mode');
-      console.error(error);
+      console.error('[PanicActive] Error:', error);
       router.back();
     }
   };
