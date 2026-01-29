@@ -3,10 +3,10 @@ import { View, Text, TouchableOpacity, StyleSheet, FlatList, RefreshControl, Ale
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import Constants from 'expo-constants';
 import * as Clipboard from 'expo-clipboard';
+import { getAuthToken, clearAuthData } from '../../utils/auth';
 
 const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'https://guardlogin.preview.emergentagent.com';
 
@@ -26,13 +26,25 @@ export default function AdminInviteCodes() {
 
   const loadCodes = async () => {
     try {
-      const token = await AsyncStorage.getItem('auth_token');
+      const token = await getAuthToken();
+      if (!token) {
+        router.replace('/admin/login');
+        return;
+      }
+      
       const response = await axios.get(`${BACKEND_URL}/api/admin/invite-codes`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 15000
       });
-      setCodes(response.data.codes);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to load invite codes');
+      setCodes(response.data.codes || []);
+    } catch (error: any) {
+      console.error('[AdminInviteCodes] Failed to load codes:', error?.response?.status);
+      if (error?.response?.status === 401) {
+        await clearAuthData();
+        router.replace('/admin/login');
+      } else {
+        Alert.alert('Error', 'Failed to load invite codes');
+      }
     } finally {
       setLoading(false);
     }
@@ -46,13 +58,19 @@ export default function AdminInviteCodes() {
 
   const createCode = async () => {
     try {
-      const token = await AsyncStorage.getItem('auth_token');
+      const token = await getAuthToken();
+      if (!token) {
+        router.replace('/admin/login');
+        return;
+      }
+      
       const response = await axios.post(`${BACKEND_URL}/api/admin/invite-codes`, {
         code: newCode || null,
         max_uses: parseInt(maxUses) || 10,
         expires_days: parseInt(expiresDays) || 30
       }, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 10000
       });
       
       Alert.alert('Success', `Code created: ${response.data.code}`);
