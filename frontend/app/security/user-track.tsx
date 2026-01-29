@@ -3,10 +3,9 @@ import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Lin
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
 import Constants from 'expo-constants';
+import { getAuthToken, clearAuthData } from '../../utils/auth';
 
 const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'https://guardlogin.preview.emergentagent.com';
 
@@ -26,7 +25,7 @@ export default function UserTrack() {
         setUserData(parsed);
         setTrackData(parsed);
       } catch (e) {
-        console.error('Failed to parse user data:', e);
+        console.error('[UserTrack] Failed to parse user data:', e);
       }
     }
     setLoading(false);
@@ -43,27 +42,28 @@ export default function UserTrack() {
     };
   }, [params.userData]);
 
-  const getToken = async () => {
-    try {
-      const token = await SecureStore.getItemAsync('auth_token');
-      if (token) return token;
-    } catch (e) {}
-    return await AsyncStorage.getItem('auth_token');
-  };
-
   const refreshTrackData = async () => {
     if (!userData?.user_id) return;
     
     setRefreshing(true);
     try {
-      const token = await getToken();
+      const token = await getAuthToken();
+      if (!token) {
+        router.replace('/auth/login');
+        return;
+      }
+      
       const response = await axios.get(
         `${BACKEND_URL}/api/security/track-user/${userData.user_id}`,
         { headers: { Authorization: `Bearer ${token}` }, timeout: 10000 }
       );
       setTrackData(response.data);
-    } catch (error) {
-      console.error('Failed to refresh track data:', error);
+    } catch (error: any) {
+      console.error('[UserTrack] Failed to refresh track data:', error?.response?.status);
+      if (error?.response?.status === 401) {
+        await clearAuthData();
+        router.replace('/auth/login');
+      }
     } finally {
       setRefreshing(false);
     }
