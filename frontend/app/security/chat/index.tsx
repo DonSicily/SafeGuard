@@ -3,9 +3,9 @@ import { View, Text, TouchableOpacity, StyleSheet, FlatList, RefreshControl, Ale
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import Constants from 'expo-constants';
+import { getAuthToken, clearAuthData } from '../../../utils/auth';
 
 const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'https://guardlogin.preview.emergentagent.com';
 
@@ -26,25 +26,38 @@ export default function SecurityChat() {
 
   const loadConversations = async () => {
     try {
-      const token = await AsyncStorage.getItem('auth_token');
+      const token = await getAuthToken();
+      if (!token) {
+        router.replace('/auth/login');
+        return;
+      }
+      
       const response = await axios.get(`${BACKEND_URL}/api/chat/conversations`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 15000
       });
       setConversations(response.data.conversations || []);
-    } catch (error) {
-      console.error('Failed to load conversations:', error);
+    } catch (error: any) {
+      console.error('[SecurityChat] Failed to load conversations:', error?.response?.status);
+      if (error?.response?.status === 401) {
+        await clearAuthData();
+        router.replace('/auth/login');
+      }
     }
   };
 
   const loadUnreadCount = async () => {
     try {
-      const token = await AsyncStorage.getItem('auth_token');
+      const token = await getAuthToken();
+      if (!token) return;
+      
       const response = await axios.get(`${BACKEND_URL}/api/chat/unread-count`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 10000
       });
       setUnreadCount(response.data.unread_count || 0);
     } catch (error) {
-      console.error('Failed to load unread count:', error);
+      console.error('[SecurityChat] Failed to load unread count:', error);
     }
   };
 
