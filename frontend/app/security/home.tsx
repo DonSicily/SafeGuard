@@ -233,8 +233,12 @@ export default function SecurityHome() {
               onChangeText={setSearchTerm}
               autoCapitalize="none"
             />
-            <TouchableOpacity style={styles.searchButton} onPress={handleSearch}>
-              <Ionicons name="arrow-forward" size={20} color="#fff" />
+            <TouchableOpacity style={styles.searchButton} onPress={handleSearch} disabled={searchLoading}>
+              {searchLoading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Ionicons name="arrow-forward" size={20} color="#fff" />
+              )}
             </TouchableOpacity>
           </View>
         </View>
