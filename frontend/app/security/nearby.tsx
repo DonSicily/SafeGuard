@@ -3,11 +3,10 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView, RefreshControl, A
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as SecureStore from 'expo-secure-store';
 import * as Location from 'expo-location';
 import axios from 'axios';
 import Constants from 'expo-constants';
+import { getAuthToken, clearAuthData } from '../../utils/auth';
 
 const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'https://guardlogin.preview.emergentagent.com';
 
@@ -24,14 +23,6 @@ export default function SecurityNearby() {
     router.replace('/security/home');
   };
 
-  const getToken = async () => {
-    try {
-      const token = await SecureStore.getItemAsync('auth_token');
-      if (token) return token;
-    } catch (e) {}
-    return await AsyncStorage.getItem('auth_token');
-  };
-
   useEffect(() => {
     loadNearbyUsers();
   }, []);
@@ -45,7 +36,12 @@ export default function SecurityNearby() {
       }
 
       const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-      const token = await getToken();
+      const token = await getAuthToken();
+      
+      if (!token) {
+        router.replace('/auth/login');
+        return false;
+      }
       
       await axios.post(`${BACKEND_URL}/api/security/update-location`, {
         latitude: location.coords.latitude,
