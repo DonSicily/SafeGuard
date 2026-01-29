@@ -3,9 +3,9 @@ import { View, Text, TouchableOpacity, StyleSheet, FlatList, RefreshControl, Ale
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import Constants from 'expo-constants';
+import { getAuthToken, clearAuthData } from '../../utils/auth';
 
 const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'https://guardlogin.preview.emergentagent.com';
 
@@ -24,16 +24,27 @@ export default function AdminUsers() {
 
   const loadUsers = async () => {
     try {
-      const token = await AsyncStorage.getItem('auth_token');
+      const token = await getAuthToken();
+      if (!token) {
+        router.replace('/admin/login');
+        return;
+      }
+      
       let url = `${BACKEND_URL}/api/admin/users?limit=100`;
       if (roleFilter) url += `&role=${roleFilter}`;
 
       const response = await axios.get(url, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 15000
       });
       setUsers(response.data.users);
     } catch (error: any) {
-      Alert.alert('Error', 'Failed to load users');
+      if (error?.response?.status === 401) {
+        await clearAuthData();
+        router.replace('/admin/login');
+      } else {
+        Alert.alert('Error', 'Failed to load users');
+      }
     } finally {
       setLoading(false);
     }
@@ -47,17 +58,28 @@ export default function AdminUsers() {
 
   const toggleUserStatus = async (userId: string, currentStatus: boolean) => {
     try {
-      const token = await AsyncStorage.getItem('auth_token');
+      const token = await getAuthToken();
+      if (!token) {
+        router.replace('/admin/login');
+        return;
+      }
+      
       await axios.put(`${BACKEND_URL}/api/admin/users/${userId}/toggle`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 10000
       });
       
       setUsers(users.map(u => 
         u.id === userId ? { ...u, is_active: !currentStatus } : u
       ));
       Alert.alert('Success', `User ${currentStatus ? 'deactivated' : 'activated'}`);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to update user status');
+    } catch (error: any) {
+      if (error?.response?.status === 401) {
+        await clearAuthData();
+        router.replace('/admin/login');
+      } else {
+        Alert.alert('Error', 'Failed to update user status');
+      }
     }
   };
 
