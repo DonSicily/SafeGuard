@@ -67,7 +67,12 @@ export default function SecurityNearby() {
       // First update our location
       await updateMyLocation();
 
-      const token = await getToken();
+      const token = await getAuthToken();
+      if (!token) {
+        router.replace('/auth/login');
+        return;
+      }
+      
       const response = await axios.get(`${BACKEND_URL}/api/security/nearby`, {
         headers: { Authorization: `Bearer ${token}` },
         timeout: 15000
@@ -80,10 +85,13 @@ export default function SecurityNearby() {
         latitude: response.data.your_location.coordinates[1]
       } : null);
     } catch (error: any) {
-      if (error.response?.status === 400) {
+      if (error?.response?.status === 401) {
+        await clearAuthData();
+        router.replace('/auth/login');
+      } else if (error.response?.status === 400) {
         setLocationError('Please update your location first');
       } else {
-        console.error('Failed to load nearby users:', error);
+        console.error('[SecurityNearby] Failed to load nearby users:', error);
         setLocationError('Failed to load nearby security. Pull to refresh.');
       }
     } finally {
