@@ -1126,6 +1126,53 @@ async def verify_payment(reference: str, user = Depends(get_current_user)):
         logging.error(f"Payment verification error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+class PaymentVerify(BaseModel):
+    reference: str
+
+@api_router.post("/payment/verify")
+async def verify_payment_post(data: PaymentVerify, user = Depends(get_current_user)):
+    """Verify payment and activate premium - POST version for demo"""
+    try:
+        # For demo purposes, auto-activate if reference starts with DEMO_
+        if data.reference.startswith('DEMO_'):
+            await db.users.update_one(
+                {'_id': user['_id']},
+                {'$set': {
+                    'is_premium': True,
+                    'premium_activated_at': datetime.utcnow()
+                }}
+            )
+            return {
+                'status': 'success',
+                'message': 'Premium activated successfully! (Demo Mode)',
+                'is_premium': True
+            }
+        
+        # Otherwise try to verify with Paystack
+        result = await paystack_service.verify_transaction(data.reference)
+        
+        if result.get('status') and result.get('data', {}).get('status') == 'success':
+            await db.users.update_one(
+                {'_id': user['_id']},
+                {'$set': {
+                    'is_premium': True,
+                    'premium_activated_at': datetime.utcnow()
+                }}
+            )
+            return {
+                'status': 'success',
+                'message': 'Premium activated successfully!',
+                'is_premium': True
+            }
+        else:
+            raise HTTPException(status_code=400, detail="Payment verification failed")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Payment verification error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ===== ADMIN ROUTES =====
 
 async def get_admin_user(authorization: Optional[str] = Header(None)):
