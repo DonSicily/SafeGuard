@@ -3,9 +3,9 @@ import { View, Text, TouchableOpacity, StyleSheet, FlatList, TextInput, Keyboard
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import Constants from 'expo-constants';
+import { getAuthToken, clearAuthData } from '../../../utils/auth';
 
 const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'https://guardlogin.preview.emergentagent.com';
 
@@ -30,22 +30,33 @@ export default function ChatConversation() {
 
   const loadMessages = async () => {
     try {
-      const token = await AsyncStorage.getItem('auth_token');
+      const token = await getAuthToken();
+      if (!token) {
+        router.replace('/auth/login');
+        return;
+      }
+      
       const response = await axios.get(`${BACKEND_URL}/api/chat/${conversationId}/messages?limit=100`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 15000
       });
       setMessages(response.data.messages || []);
       
       // Get other user info from conversations if needed
       if (!otherUser) {
         const convResponse = await axios.get(`${BACKEND_URL}/api/chat/conversations`, {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 15000
         });
         const conv = convResponse.data.conversations?.find((c: any) => c.id === conversationId);
         if (conv) setOtherUser(conv.other_user);
       }
-    } catch (error) {
-      console.error('Failed to load messages:', error);
+    } catch (error: any) {
+      console.error('[ChatConversation] Failed to load messages:', error?.response?.status);
+      if (error?.response?.status === 401) {
+        await clearAuthData();
+        router.replace('/auth/login');
+      }
     }
   };
 
@@ -54,19 +65,30 @@ export default function ChatConversation() {
     
     setSending(true);
     try {
-      const token = await AsyncStorage.getItem('auth_token');
+      const token = await getAuthToken();
+      if (!token) {
+        router.replace('/auth/login');
+        return;
+      }
+      
       await axios.post(`${BACKEND_URL}/api/chat/send`, {
         to_user_id: otherUser?.id,
         content: newMessage.trim(),
         message_type: 'text'
       }, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 15000
       });
       
       setNewMessage('');
       await loadMessages();
       flatListRef.current?.scrollToEnd({ animated: true });
     } catch (error: any) {
+      if (error?.response?.status === 401) {
+        await clearAuthData();
+        router.replace('/auth/login');
+        return;
+      }
       Alert.alert('Error', error.response?.data?.detail || 'Failed to send message');
     } finally {
       setSending(false);
