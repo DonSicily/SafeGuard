@@ -363,4 +363,13 @@ const styles = StyleSheet.create({
   empty: { alignItems: 'center', paddingVertical: 60 },
   emptyText: { fontSize: 16, color: '#64748B', marginTop: 12 },
   emptySubtext: { fontSize: 14, color: '#475569', marginTop: 4, textAlign: 'center' },
+  viewToggle: { flexDirection: 'row', backgroundColor: '#1E293B', borderRadius: 8, padding: 4 },
+  toggleButton: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 },
+  toggleActive: { backgroundColor: '#3B82F6' },
+  mapContainer: { flex: 1, margin: 16 },
+  map: { flex: 1, borderRadius: 12, overflow: 'hidden' },
+  mapLegend: { flexDirection: 'row', justifyContent: 'center', gap: 20, padding: 12, backgroundColor: '#1E293B', borderRadius: 8, marginTop: 8 },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  legendDot: { width: 12, height: 12, borderRadius: 6 },
+  legendText: { fontSize: 12, color: '#94A3B8' },
 });
