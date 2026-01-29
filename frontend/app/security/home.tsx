@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, TextInput } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, TextInput, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import Constants from 'expo-constants';
+import { getAuthToken, clearAuthData, getUserMetadata } from '../../utils/auth';
 
 const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'https://guardlogin.preview.emergentagent.com';
 
@@ -16,38 +16,90 @@ export default function SecurityHome() {
   const [nearbyPanics, setNearbyPanics] = useState([]);
   const [radiusKm, setRadiusKm] = useState(10);
   const [searchTerm, setSearchTerm] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [searchLoading, setSearchLoading] = useState(false);
 
   useEffect(() => {
-    loadTeamLocation();
-    loadNearbyData();
-    const interval = setInterval(loadNearbyData, 30000); // Refresh every 30s
+    initializeScreen();
+    const interval = setInterval(loadNearbyData, 30000);
     return () => clearInterval(interval);
   }, []);
 
+  const initializeScreen = async () => {
+    setLoading(true);
+    console.log('[SecurityHome] Initializing...');
+    
+    const token = await getAuthToken();
+    console.log('[SecurityHome] Token exists:', !!token);
+    
+    if (!token) {
+      console.log('[SecurityHome] No token, redirecting to login');
+      router.replace('/auth/login');
+      return;
+    }
+    
+    // Verify role
+    const metadata = await getUserMetadata();
+    console.log('[SecurityHome] User role:', metadata.role);
+    
+    if (metadata.role !== 'security') {
+      console.log('[SecurityHome] Not security role, redirecting');
+      Alert.alert('Access Denied', 'Security access required');
+      router.replace('/auth/login');
+      return;
+    }
+    
+    await loadTeamLocation();
+    await loadNearbyData();
+    setLoading(false);
+  };
+
   const loadTeamLocation = async () => {
     try {
-      const token = await AsyncStorage.getItem('auth_token');
+      const token = await getAuthToken();
+      if (!token) return;
+      
       const response = await axios.get(`${BACKEND_URL}/api/security/team-location`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 10000
       });
+      console.log('[SecurityHome] Team location loaded:', response.data);
       setTeamLocation(response.data);
-      setRadiusKm(response.data.radius_km);
-    } catch (error) {
-      console.error('Failed to load team location:', error);
+      setRadiusKm(response.data.radius_km || 10);
+    } catch (error: any) {
+      console.error('[SecurityHome] Failed to load team location:', error?.response?.status);
+      if (error?.response?.status === 401) {
+        await clearAuthData();
+        router.replace('/auth/login');
+      }
     }
   };
 
   const loadNearbyData = async () => {
     try {
-      const token = await AsyncStorage.getItem('auth_token');
+      const token = await getAuthToken();
+      if (!token) return;
+      
+      console.log('[SecurityHome] Loading nearby data...');
       const [reportsRes, panicsRes] = await Promise.all([
-        axios.get(`${BACKEND_URL}/api/security/nearby-reports`, { headers: { Authorization: `Bearer ${token}` } }),
-        axios.get(`${BACKEND_URL}/api/security/nearby-panics`, { headers: { Authorization: `Bearer ${token}` } })
+        axios.get(`${BACKEND_URL}/api/security/nearby-reports`, { 
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 15000 
+        }),
+        axios.get(`${BACKEND_URL}/api/security/nearby-panics`, { 
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 15000 
+        })
       ]);
-      setNearbyReports(reportsRes.data);
-      setNearbyPanics(panicsRes.data);
-    } catch (error) {
-      console.error('Failed to load nearby data:', error);
+      console.log('[SecurityHome] Reports:', reportsRes.data?.length, 'Panics:', panicsRes.data?.length);
+      setNearbyReports(reportsRes.data || []);
+      setNearbyPanics(panicsRes.data || []);
+    } catch (error: any) {
+      console.error('[SecurityHome] Failed to load nearby data:', error?.response?.status);
+      if (error?.response?.status === 401) {
+        await clearAuthData();
+        router.replace('/auth/login');
+      }
     }
   };
 
@@ -57,26 +109,58 @@ export default function SecurityHome() {
       return;
     }
 
+    setSearchLoading(true);
     try {
-      const token = await AsyncStorage.getItem('auth_token');
+      const token = await getAuthToken();
+      if (!token) {
+        router.replace('/auth/login');
+        return;
+      }
+      
+      console.log('[SecurityHome] Searching for:', searchTerm);
       const response = await axios.post(`${BACKEND_URL}/api/security/search-user`, 
-        { search_term: searchTerm },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { search_term: searchTerm.trim() },
+        { 
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 15000 
+        }
       );
-
+      
+      console.log('[SecurityHome] Search result:', response.data?.user_id);
       router.push({
         pathname: '/security/user-track',
         params: { userData: JSON.stringify(response.data) }
       });
     } catch (error: any) {
-      Alert.alert('Not Found', error.response?.data?.detail || 'User not found');
+      console.error('[SecurityHome] Search error:', error?.response?.data);
+      if (error?.response?.status === 401) {
+        Alert.alert('Session Expired', 'Please login again');
+        await clearAuthData();
+        router.replace('/auth/login');
+      } else {
+        Alert.alert('Not Found', error.response?.data?.detail || 'User not found');
+      }
+    } finally {
+      setSearchLoading(false);
     }
   };
 
   const handleLogout = async () => {
-    await AsyncStorage.clear();
+    console.log('[SecurityHome] Logout initiated');
+    await clearAuthData();
     router.replace('/auth/login');
   };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#F59E0B" />
+          <Text style={styles.loadingText}>Loading Dashboard...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
