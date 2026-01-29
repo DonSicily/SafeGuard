@@ -80,14 +80,23 @@ export default function SecurityReports() {
 
   const loadReports = async () => {
     try {
-      const token = await getToken();
+      const token = await getAuthToken();
+      if (!token) {
+        router.replace('/auth/login');
+        return;
+      }
+      
       const response = await axios.get(`${BACKEND_URL}/api/security/nearby-reports`, {
         headers: { Authorization: `Bearer ${token}` },
         timeout: 15000
       });
-      setReports(response.data);
-    } catch (error) {
-      console.error('Failed to load reports:', error);
+      setReports(response.data || []);
+    } catch (error: any) {
+      console.error('[SecurityReports] Failed to load reports:', error?.response?.status);
+      if (error?.response?.status === 401) {
+        await clearAuthData();
+        router.replace('/auth/login');
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
