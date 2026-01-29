@@ -11,9 +11,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import Constants from 'expo-constants';
+import { getAuthToken, clearAuthData } from '../utils/auth';
 
 const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'https://guardlogin.preview.emergentagent.com';
 
@@ -49,11 +49,16 @@ export default function Escort() {
       }
 
       // Start escort session
-      const token = await AsyncStorage.getItem('auth_token');
+      const token = await getAuthToken();
+      if (!token) {
+        router.replace('/auth/login');
+        return;
+      }
+      
       const response = await axios.post(
         `${BACKEND_URL}/api/escort/action`,
         { action: 'start' },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}` }, timeout: 15000 }
       );
 
       setSessionId(response.data.session_id);
@@ -64,6 +69,11 @@ export default function Escort() {
 
       Alert.alert('Success', 'Escort tracking started');
     } catch (error: any) {
+      if (error?.response?.status === 401) {
+        await clearAuthData();
+        router.replace('/auth/login');
+        return;
+      }
       Alert.alert(
         'Error',
         error.response?.data?.detail || 'Failed to start escort'
