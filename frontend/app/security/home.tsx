@@ -349,4 +349,6 @@ const styles = StyleSheet.create({
   reportInfo: { flex: 1 },
   reportType: { fontSize: 14, fontWeight: '600', color: '#fff', marginBottom: 4 },
   reportCaption: { fontSize: 12, color: '#94A3B8' },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  loadingText: { color: '#94A3B8', marginTop: 16, fontSize: 16 },
 });
