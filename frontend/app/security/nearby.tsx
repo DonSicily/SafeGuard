@@ -321,13 +321,14 @@ export default function SecurityNearby() {
               <Ionicons name="people-outline" size={48} color="#64748B" />
               <Text style={styles.emptyText}>
                 {loading ? 'Loading nearby users...' : 'No security users nearby'}
-            </Text>
-            <Text style={styles.emptySubtext}>
-              Update your location and increase radius in settings
-            </Text>
-          </View>
-        )}
-      </ScrollView>
+              </Text>
+              <Text style={styles.emptySubtext}>
+                Update your location and increase radius in settings
+              </Text>
+            </View>
+          )}
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 }
