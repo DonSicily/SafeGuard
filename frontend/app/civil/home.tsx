@@ -8,7 +8,7 @@ import Constants from 'expo-constants';
 import { getPendingCount, processQueue } from '../../utils/offlineQueue';
 import { getAuthToken, clearAuthData, getUserMetadata } from '../../utils/auth';
 
-const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'https://guardwatch-14.preview.emergentagent.com';
+const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'https://guardlogin.preview.emergentagent.com';
 
 export default function CivilHome() {
   const router = useRouter();

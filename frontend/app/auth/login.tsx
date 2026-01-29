@@ -8,7 +8,7 @@ import Constants from 'expo-constants';
 import { saveAuthData, clearAuthData } from '../../utils/auth';
 import { setupPushNotifications } from '../../utils/notifications';
 
-const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'https://guardwatch-14.preview.emergentagent.com';
+const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'https://guardlogin.preview.emergentagent.com';
 
 export default function Login() {
   const router = useRouter();

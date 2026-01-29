@@ -10,7 +10,7 @@ import axios from 'axios';
 import Constants from 'expo-constants';
 import EmergencyCategoryModal from '../../components/EmergencyCategoryModal';
 
-const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'https://guardwatch-14.preview.emergentagent.com';
+const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'https://guardlogin.preview.emergentagent.com';
 const LOCATION_TASK = 'background-location-panic';
 
 TaskManager.defineTask(LOCATION_TASK, async ({ data, error }) => {

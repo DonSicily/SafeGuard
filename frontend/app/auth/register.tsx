@@ -9,7 +9,7 @@ import axios from 'axios';
 import Constants from 'expo-constants';
 import { setupPushNotifications } from '../../utils/notifications';
 
-const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'https://guardwatch-14.preview.emergentagent.com';
+const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'https://guardlogin.preview.emergentagent.com';
 
 export default function Register() {
   const router = useRouter();

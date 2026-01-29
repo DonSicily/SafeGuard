@@ -11,7 +11,7 @@ import Slider from '@react-native-community/slider';
 import Constants from 'expo-constants';
 import { NativeMap } from '../../components/NativeMap';
 
-const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'https://guardwatch-14.preview.emergentagent.com';
+const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'https://guardlogin.preview.emergentagent.com';
 
 export default function SetLocation() {
   const router = useRouter();

@@ -120,7 +120,7 @@
       "eas": {
         "projectId": "8b0bb146-4db8-46e1-bb60-89f38eac0271"
       },
-      "backendUrl": "https://guardwatch-14.preview.emergentagent.com"
+      "backendUrl": "https://guardlogin.preview.emergentagent.com"
     }
   }
 }
