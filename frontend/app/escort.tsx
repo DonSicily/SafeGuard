@@ -98,10 +98,10 @@ export default function Escort() {
             accuracy: location.coords.accuracy,
             timestamp: new Date().toISOString(),
           },
-          { headers: { Authorization: `Bearer ${token}` } }
+          { headers: { Authorization: `Bearer ${token}` }, timeout: 15000 }
         );
       } catch (error) {
-        console.error('Location tracking error:', error);
+        console.error('[Escort] Location tracking error:', error);
       }
     }, 30000); // 30 seconds
   };
@@ -123,12 +123,14 @@ export default function Escort() {
               }
 
               // Stop escort session
-              const token = await AsyncStorage.getItem('auth_token');
-              await axios.post(
-                `${BACKEND_URL}/api/escort/action`,
-                { action: 'stop' },
-                { headers: { Authorization: `Bearer ${token}` } }
-              );
+              const token = await getAuthToken();
+              if (token) {
+                await axios.post(
+                  `${BACKEND_URL}/api/escort/action`,
+                  { action: 'stop' },
+                  { headers: { Authorization: `Bearer ${token}` }, timeout: 15000 }
+                );
+              }
 
               setIsTracking(false);
               setSessionId(null);
