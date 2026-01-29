@@ -3,9 +3,9 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView, RefreshControl, A
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import Constants from 'expo-constants';
+import { getAuthToken, clearAuthData } from '../../utils/auth';
 
 const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'https://guardlogin.preview.emergentagent.com';
 const { width } = Dimensions.get('window');
@@ -22,13 +22,23 @@ export default function AdminSecurityMap() {
 
   const loadSecurityUsers = async () => {
     try {
-      const token = await AsyncStorage.getItem('auth_token');
+      const token = await getAuthToken();
+      if (!token) {
+        router.replace('/admin/login');
+        return;
+      }
+      
       const response = await axios.get(`${BACKEND_URL}/api/admin/security-map`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 15000
       });
-      setSecurityUsers(response.data.security_users);
-    } catch (error) {
-      console.error('Failed to load security users:', error);
+      setSecurityUsers(response.data.security_users || []);
+    } catch (error: any) {
+      console.error('[AdminSecurityMap] Failed to load security users:', error?.response?.status);
+      if (error?.response?.status === 401) {
+        await clearAuthData();
+        router.replace('/admin/login');
+      }
     }
   };
 
