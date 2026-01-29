@@ -316,4 +316,12 @@ const styles = StyleSheet.create({
   pendingBadgeText: { color: '#fff', fontSize: 14, fontWeight: 'bold' },
   logoutButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16 },
   logoutText: { fontSize: 16, color: '#EF4444', fontWeight: '600' },
+  reportItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1E293B', padding: 12, borderRadius: 12, marginBottom: 8, gap: 12 },
+  reportInfo: { flex: 1 },
+  reportType: { fontSize: 14, fontWeight: '500', color: '#fff' },
+  reportDate: { fontSize: 12, color: '#64748B' },
+  statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  uploadedBadge: { backgroundColor: '#10B98120' },
+  pendingBadge: { backgroundColor: '#F59E0B20' },
+  statusBadgeText: { fontSize: 12, fontWeight: '600', color: '#10B981' },
 });
