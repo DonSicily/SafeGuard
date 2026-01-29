@@ -132,6 +132,17 @@ export default function SecurityNearby() {
     }
   };
 
+  const openInMaps = (latitude: number, longitude: number, label: string) => {
+    const scheme = Platform.select({ ios: 'maps:', android: 'geo:' });
+    const url = Platform.select({
+      ios: `maps:?q=${label}&ll=${latitude},${longitude}`,
+      android: `geo:${latitude},${longitude}?q=${latitude},${longitude}(${label})`
+    });
+    if (url) {
+      Linking.openURL(url);
+    }
+  };
+
   const getStatusColor = (status: string) => {
     const colors: any = {
       available: '#10B981',
@@ -140,6 +151,39 @@ export default function SecurityNearby() {
       offline: '#64748B'
     };
     return colors[status] || '#64748B';
+  };
+
+  // Prepare markers for the map
+  const getMapMarkers = () => {
+    const markers: any[] = [];
+    
+    // Add user's own location as red marker
+    if (myLocation) {
+      markers.push({
+        id: 'my-location',
+        latitude: myLocation.latitude,
+        longitude: myLocation.longitude,
+        title: 'You',
+        description: 'Your current location',
+        pinColor: '#EF4444'
+      });
+    }
+    
+    // Add nearby security users as blue markers
+    nearbyUsers.forEach((user: any) => {
+      if (user.location?.coordinates) {
+        markers.push({
+          id: user.id,
+          latitude: user.location.coordinates[1],
+          longitude: user.location.coordinates[0],
+          title: user.full_name || 'Security Agent',
+          description: user.status || 'Available',
+          pinColor: '#3B82F6'
+        });
+      }
+    });
+    
+    return markers;
   };
 
   const renderUser = (user: any) => (
