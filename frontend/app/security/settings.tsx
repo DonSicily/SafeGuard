@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Switch } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Switch, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import Slider from '@react-native-community/slider';
 import axios from 'axios';
 import Constants from 'expo-constants';
+import { getAuthToken, clearAuthData } from '../../utils/auth';
 
 const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'https://guardlogin.preview.emergentagent.com';
 
@@ -17,44 +17,79 @@ export default function SecuritySettings() {
   const [isVisible, setIsVisible] = useState(true);
   const [status, setStatus] = useState('available');
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const goBack = () => {
     router.replace('/security/home');
   };
 
   useEffect(() => {
-    loadProfile();
+    initializeSettings();
   }, []);
+
+  const initializeSettings = async () => {
+    setLoading(true);
+    const token = await getAuthToken();
+    if (!token) {
+      router.replace('/auth/login');
+      return;
+    }
+    await loadProfile();
+    setLoading(false);
+  };
 
   const loadProfile = async () => {
     try {
-      const token = await AsyncStorage.getItem('auth_token');
+      const token = await getAuthToken();
+      if (!token) return;
+      
       const response = await axios.get(`${BACKEND_URL}/api/security/profile`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 10000
       });
+      console.log('[SecuritySettings] Profile loaded:', response.data?.email);
       setProfile(response.data);
       setRadius(response.data.visibility_radius_km || 25);
       setIsVisible(response.data.is_visible !== false);
       setStatus(response.data.status || 'available');
-    } catch (error) {
-      console.error('Failed to load profile:', error);
+    } catch (error: any) {
+      console.error('[SecuritySettings] Failed to load profile:', error?.response?.status);
+      if (error?.response?.status === 401) {
+        await clearAuthData();
+        router.replace('/auth/login');
+      }
     }
   };
 
   const saveSettings = async () => {
     setSaving(true);
     try {
-      const token = await AsyncStorage.getItem('auth_token');
+      const token = await getAuthToken();
+      if (!token) {
+        router.replace('/auth/login');
+        return;
+      }
+      
+      console.log('[SecuritySettings] Saving settings...');
       await axios.put(`${BACKEND_URL}/api/security/settings`, {
         visibility_radius_km: Math.round(radius),
         is_visible: isVisible,
         status: status
       }, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 10000
       });
+      console.log('[SecuritySettings] Settings saved');
       Alert.alert('Success', 'Settings saved successfully');
     } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.detail || 'Failed to save settings');
+      console.error('[SecuritySettings] Save error:', error?.response?.data);
+      if (error?.response?.status === 401) {
+        Alert.alert('Session Expired', 'Please login again');
+        await clearAuthData();
+        router.replace('/auth/login');
+      } else {
+        Alert.alert('Error', error.response?.data?.detail || 'Failed to save settings');
+      }
     } finally {
       setSaving(false);
     }
@@ -63,14 +98,17 @@ export default function SecuritySettings() {
   const updateStatus = async (newStatus: string) => {
     setStatus(newStatus);
     try {
-      const token = await AsyncStorage.getItem('auth_token');
+      const token = await getAuthToken();
+      if (!token) return;
+      
       await axios.put(`${BACKEND_URL}/api/security/status`, {
         status: newStatus
       }, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 10000
       });
     } catch (error) {
-      console.error('Failed to update status:', error);
+      console.error('[SecuritySettings] Failed to update status:', error);
     }
   };
 
