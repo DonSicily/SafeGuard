@@ -85,7 +85,14 @@ export default function PanicActive() {
       await Location.requestBackgroundPermissionsAsync();
 
       const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-      const token = await AsyncStorage.getItem('auth_token');
+      const token = await getAuthToken();
+      
+      if (!token) {
+        Alert.alert('Session Expired', 'Please login again');
+        router.replace('/auth/login');
+        return;
+      }
+      
       const response = await axios.post(`${BACKEND_URL}/api/panic/activate`, {
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
@@ -101,9 +108,15 @@ export default function PanicActive() {
 
       Alert.alert('Panic Mode Activated', 'Nearby security agencies have been alerted. Stay safe.');
     } catch (error: any) {
-      Alert.alert('Error', 'Failed to activate panic mode');
-      console.error(error);
-      router.back();
+      console.error('[PanicActive] Activation error:', error?.response?.data);
+      if (error?.response?.status === 401) {
+        Alert.alert('Session Expired', 'Please login again');
+        await clearAuthData();
+        router.replace('/auth/login');
+      } else {
+        Alert.alert('Error', 'Failed to activate panic mode');
+        router.back();
+      }
     }
   };
 
