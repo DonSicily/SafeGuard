@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, RefreshControl, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, RefreshControl, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import Constants from 'expo-constants';
+import { getAuthToken, clearAuthData, getUserMetadata } from '../../utils/auth';
 
 const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'https://guardlogin.preview.emergentagent.com';
 
@@ -14,24 +14,61 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState<any>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [adminName, setAdminName] = useState('Admin');
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadData();
+    initializeDashboard();
   }, []);
+
+  const initializeDashboard = async () => {
+    setLoading(true);
+    console.log('[AdminDashboard] Initializing...');
+    
+    // Check authentication
+    const token = await getAuthToken();
+    console.log('[AdminDashboard] Token exists:', !!token);
+    
+    if (!token) {
+      console.log('[AdminDashboard] No token, redirecting to login');
+      router.replace('/admin/login');
+      return;
+    }
+    
+    // Verify role
+    const metadata = await getUserMetadata();
+    console.log('[AdminDashboard] User role:', metadata.role);
+    
+    if (metadata.role !== 'admin') {
+      console.log('[AdminDashboard] Not admin role, redirecting');
+      Alert.alert('Access Denied', 'Admin access required');
+      router.replace('/admin/login');
+      return;
+    }
+    
+    await loadData();
+    setLoading(false);
+  };
 
   const loadData = async () => {
     try {
-      const token = await AsyncStorage.getItem('auth_token');
-      const name = await AsyncStorage.getItem('admin_name');
-      setAdminName(name || 'Admin');
-
+      const token = await getAuthToken();
+      if (!token) {
+        router.replace('/admin/login');
+        return;
+      }
+      
+      console.log('[AdminDashboard] Fetching dashboard data...');
       const response = await axios.get(`${BACKEND_URL}/api/admin/dashboard`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 15000
       });
+      console.log('[AdminDashboard] Data received:', response.data?.total_users);
       setStats(response.data);
     } catch (error: any) {
+      console.error('[AdminDashboard] Error loading data:', error?.response?.status);
       if (error.response?.status === 403 || error.response?.status === 401) {
         Alert.alert('Access Denied', 'Please login as admin');
+        await clearAuthData();
         router.replace('/admin/login');
       }
     }
@@ -44,9 +81,21 @@ export default function AdminDashboard() {
   };
 
   const handleLogout = async () => {
-    await AsyncStorage.clear();
+    console.log('[AdminDashboard] Logout initiated');
+    await clearAuthData();
     router.replace('/admin/login');
   };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#8B5CF6" />
+          <Text style={styles.loadingText}>Loading Dashboard...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   const StatCard = ({ title, value, icon, color, onPress }: any) => (
     <TouchableOpacity style={[styles.statCard, { borderLeftColor: color }]} onPress={onPress}>
