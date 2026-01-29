@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,28 +15,43 @@ export default function CivilHome() {
   const [isPremium, setIsPremium] = useState(false);
   const [pendingUploads, setPendingUploads] = useState(0);
   const [userName, setUserName] = useState('');
+  const [myReports, setMyReports] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    checkUserStatus();
-    checkPendingUploads();
-    
+    initializeScreen();
     const interval = setInterval(checkPendingUploads, 30000);
     return () => clearInterval(interval);
   }, []);
 
-  const getToken = async () => {
-    try {
-      const token = await SecureStore.getItemAsync('auth_token');
-      if (token) return token;
-    } catch (e) {}
-    return await AsyncStorage.getItem('auth_token');
+  const initializeScreen = async () => {
+    setLoading(true);
+    console.log('[CivilHome] Initializing screen...');
+    
+    // Check authentication first
+    const token = await getAuthToken();
+    console.log('[CivilHome] Token exists:', !!token);
+    
+    if (!token) {
+      console.log('[CivilHome] No token found, redirecting to login');
+      router.replace('/auth/login');
+      return;
+    }
+    
+    await Promise.all([
+      checkUserStatus(),
+      checkPendingUploads(),
+      loadMyReports()
+    ]);
+    setLoading(false);
   };
 
   const checkUserStatus = async () => {
     try {
-      // Get premium status from metadata
+      // Get premium status from metadata first
       const metadata = await getUserMetadata();
       setIsPremium(metadata.isPremium);
+      console.log('[CivilHome] Local metadata premium:', metadata.isPremium);
       
       // Verify with backend
       const token = await getAuthToken();
@@ -44,21 +59,43 @@ export default function CivilHome() {
         try {
           const response = await axios.get(`${BACKEND_URL}/api/user/profile`, {
             headers: { Authorization: `Bearer ${token}` },
-            timeout: 5000
+            timeout: 10000
           });
           
+          console.log('[CivilHome] Backend profile response:', response.data?.is_premium);
           const backendPremium = response.data?.is_premium === true;
           setIsPremium(backendPremium);
           
           if (response.data?.full_name) {
             setUserName(response.data.full_name);
           }
-        } catch (apiError) {
-          console.log('[CivilHome] Could not verify premium with backend:', apiError);
+        } catch (apiError: any) {
+          console.log('[CivilHome] Could not verify with backend:', apiError?.response?.status);
+          // If 401, token is invalid - redirect to login
+          if (apiError?.response?.status === 401) {
+            console.log('[CivilHome] Token invalid, clearing and redirecting');
+            await clearAuthData();
+            router.replace('/auth/login');
+          }
         }
       }
     } catch (error) {
-      console.error('[CivilHome] Error checking premium status:', error);
+      console.error('[CivilHome] Error checking user status:', error);
+    }
+  };
+
+  const loadMyReports = async () => {
+    try {
+      const token = await getAuthToken();
+      if (!token) return;
+      
+      const response = await axios.get(`${BACKEND_URL}/api/report/my-reports`, {
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 10000
+      });
+      setMyReports(response.data.slice(0, 3)); // Show first 3 reports
+    } catch (error) {
+      console.log('[CivilHome] Could not load reports:', error);
     }
   };
 
