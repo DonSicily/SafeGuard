@@ -36,24 +36,27 @@ export default function ReportList() {
     loadReports();
   }, []);
 
-  const getToken = async () => {
-    try {
-      const token = await SecureStore.getItemAsync('auth_token');
-      if (token) return token;
-    } catch (e) {}
-    return await AsyncStorage.getItem('auth_token');
-  };
-
   const loadReports = async () => {
     try {
-      const token = await getToken();
+      const token = await getAuthToken();
+      if (!token) {
+        router.replace('/auth/login');
+        return;
+      }
+      
+      console.log('[ReportList] Loading reports...');
       const response = await axios.get(`${BACKEND_URL}/api/report/my-reports`, {
         headers: { Authorization: `Bearer ${token}` },
         timeout: 15000
       });
+      console.log('[ReportList] Reports loaded:', response.data?.length);
       setReports(response.data);
-    } catch (error) {
-      console.error('Failed to load reports:', error);
+    } catch (error: any) {
+      console.error('[ReportList] Failed to load reports:', error?.response?.status);
+      if (error?.response?.status === 401) {
+        await clearAuthData();
+        router.replace('/auth/login');
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
