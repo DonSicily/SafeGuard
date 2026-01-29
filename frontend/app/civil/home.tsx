@@ -235,12 +235,35 @@ export default function CivilHome() {
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>My Reports</Text>
+            <Text style={styles.sectionTitle}>My Reports ({myReports.length})</Text>
             <TouchableOpacity onPress={() => router.push('/report/list')}>
               <Text style={styles.viewAll}>View All</Text>
             </TouchableOpacity>
           </View>
-          <Text style={styles.placeholderText}>Your submitted reports will appear here</Text>
+          {myReports.length === 0 ? (
+            <Text style={styles.placeholderText}>Your submitted reports will appear here</Text>
+          ) : (
+            myReports.map((report: any) => (
+              <View key={report.id} style={styles.reportItem}>
+                <Ionicons
+                  name={report.type === 'video' ? 'videocam' : 'mic'}
+                  size={20}
+                  color={report.type === 'video' ? '#10B981' : '#8B5CF6'}
+                />
+                <View style={styles.reportInfo}>
+                  <Text style={styles.reportType}>{report.type?.toUpperCase()} Report</Text>
+                  <Text style={styles.reportDate}>
+                    {new Date(report.created_at).toLocaleDateString()}
+                  </Text>
+                </View>
+                <View style={[styles.statusBadge, report.uploaded ? styles.uploadedBadge : styles.pendingBadge]}>
+                  <Text style={styles.statusBadgeText}>
+                    {report.uploaded ? 'Uploaded' : 'Pending'}
+                  </Text>
+                </View>
+              </View>
+            ))
+          )}
         </View>
 
         {!isPremium && (
