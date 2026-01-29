@@ -3,10 +3,9 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingVi
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
 import Constants from 'expo-constants';
+import { saveAuthData, clearAuthData } from '../../utils/auth';
 
 const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || process.env.EXPO_PUBLIC_BACKEND_URL || 'https://guardlogin.preview.emergentagent.com';
 
@@ -24,38 +23,41 @@ export default function AdminLogin() {
     }
 
     setLoading(true);
+    
+    // Clear any previous auth data
+    await clearAuthData();
+    
     try {
-      console.log('Admin login to:', `${BACKEND_URL}/api/admin/login`);
+      console.log('[AdminLogin] Attempting login to:', `${BACKEND_URL}/api/admin/login`);
       
       const response = await axios.post(`${BACKEND_URL}/api/admin/login`, { 
         email: email.trim().toLowerCase(),
         password 
       }, { timeout: 15000 });
 
-      console.log('Admin login response:', response.data?.role);
+      console.log('[AdminLogin] Response received, role:', response.data?.role);
 
-      // SECURE STORAGE for sensitive data (with fallback for web)
-      try {
-        await SecureStore.setItemAsync('auth_token', response.data.token);
-      } catch (secureStoreError) {
-        console.log('SecureStore unavailable, using AsyncStorage');
-        await AsyncStorage.setItem('auth_token', response.data.token);
+      // Save auth data using centralized utility
+      const saved = await saveAuthData({
+        token: response.data.token,
+        user_id: String(response.data.user_id),
+        role: 'admin',
+        is_premium: false
+      });
+
+      if (!saved) {
+        throw new Error('Failed to save authentication data');
       }
-      
-      // ASYNC STORAGE for non-sensitive metadata
-      await AsyncStorage.multiSet([
-        ['user_id', String(response.data.user_id)],
-        ['user_role', 'admin'],
-        ['admin_name', response.data.full_name || 'Admin']
-      ]);
 
+      console.log('[AdminLogin] Auth data saved, navigating to dashboard');
       router.replace('/admin/dashboard');
     } catch (error: any) {
-      console.error('Admin Login Error:', error);
+      console.error('[AdminLogin] Error:', error);
       
       let errorMessage = 'An unexpected error occurred';
 
       if (error.response) {
+        console.log('[AdminLogin] Server response:', error.response.status, error.response.data);
         errorMessage = error.response.data?.detail || 
                        error.response.data?.message || 
                        'Invalid admin credentials.';
