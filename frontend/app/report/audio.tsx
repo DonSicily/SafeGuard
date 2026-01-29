@@ -137,16 +137,6 @@ export default function AudioReport() {
     }
   };
 
-  const getToken = async () => {
-    try {
-      const token = await SecureStore.getItemAsync('auth_token');
-      if (token) return token;
-    } catch (e) {
-      // SecureStore not available
-    }
-    return await AsyncStorage.getItem('auth_token');
-  };
-
   const submitReport = async () => {
     if (!audioUri) {
       Alert.alert('Error', 'Please record audio first');
@@ -164,7 +154,11 @@ export default function AudioReport() {
         }
       }
 
-      const token = await getToken();
+      const token = await getAuthToken();
+      if (!token) {
+        router.replace('/auth/login');
+        return;
+      }
       
       const response = await axios.post(
         `${BACKEND_URL}/api/report/create`,
@@ -184,13 +178,19 @@ export default function AudioReport() {
         }
       );
 
-      console.log('Report submitted:', response.data);
+      console.log('[AudioReport] Report submitted:', response.data);
 
       Alert.alert('Success!', 'Your audio report has been submitted and is visible to nearby security teams.', [
         { text: 'OK', onPress: () => router.back() }
       ]);
     } catch (error: any) {
-      console.error('Submit error:', error);
+      console.error('[AudioReport] Submit error:', error?.response?.data);
+      if (error?.response?.status === 401) {
+        Alert.alert('Session Expired', 'Please login again');
+        await clearAuthData();
+        router.replace('/auth/login');
+        return;
+      }
       let errorMessage = 'Failed to submit report. Please try again.';
       if (error.response) {
         errorMessage = error.response.data?.detail || errorMessage;
