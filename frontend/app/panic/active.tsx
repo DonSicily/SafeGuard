@@ -172,49 +172,60 @@ export default function PanicActive() {
             accuracy: location.coords.accuracy,
             timestamp: new Date().toISOString(),
           },
-          { headers: { Authorization: `Bearer ${token}` } }
+          { headers: { Authorization: `Bearer ${token}` }, timeout: 15000 }
         );
       } catch (error) {
-        console.error('Location tracking error:', error);
+        console.error('[PanicActive] Location tracking error:', error);
       }
     }, 30000); // 30 seconds
 
     // Also start background location tracking
-    await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
-      accuracy: Location.Accuracy.High,
-      timeInterval: 30000,
-      distanceInterval: 0,
-      foregroundService: {
-        notificationTitle: 'SafeGuard Active',
-        notificationBody: 'Location tracking in progress',
-      },
-    });
+    try {
+      await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
+        accuracy: Location.Accuracy.High,
+        timeInterval: 30000,
+        distanceInterval: 0,
+        foregroundService: {
+          notificationTitle: 'SafeGuard Active',
+          notificationBody: 'Location tracking in progress',
+        },
+      });
+    } catch (bgError) {
+      console.log('[PanicActive] Background tracking not available:', bgError);
+    }
   };
 
   const deactivatePanicMode = async () => {
     try {
-      const token = await AsyncStorage.getItem('auth_token');
+      const token = await getAuthToken();
       
       // Stop location tracking
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
       }
-      await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
+      
+      try {
+        await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
+      } catch (stopError) {
+        console.log('[PanicActive] Background tracking stop error:', stopError);
+      }
 
       // Deactivate in backend
-      await axios.post(
-        `${BACKEND_URL}/api/panic/deactivate`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      if (token) {
+        await axios.post(
+          `${BACKEND_URL}/api/panic/deactivate`,
+          {},
+          { headers: { Authorization: `Bearer ${token}` }, timeout: 15000 }
+        );
+      }
 
       setIsTracking(false);
       Alert.alert('Success', 'Panic mode deactivated', [
-        { text: 'OK', onPress: () => router.replace('/home') }
+        { text: 'OK', onPress: () => router.replace('/civil/home') }
       ]);
     } catch (error) {
       Alert.alert('Error', 'Failed to deactivate panic mode');
-      console.error(error);
+      console.error('[PanicActive] Deactivate error:', error);
     }
   };
 
