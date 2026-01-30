@@ -370,6 +370,27 @@ async def customize_app(customization: AppCustomization, user = Depends(get_curr
     )
     return {'message': 'App customization updated'}
 
+class EmergencyContactsUpdate(BaseModel):
+    contacts: List[dict]
+
+@api_router.put("/user/emergency-contacts")
+async def update_emergency_contacts(data: EmergencyContactsUpdate, user = Depends(get_current_user)):
+    """Update user's emergency contacts for panic notifications"""
+    valid_contacts = []
+    for contact in data.contacts:
+        if contact.get('phone'):
+            valid_contacts.append({
+                'name': contact.get('name', ''),
+                'phone': contact.get('phone'),
+                'email': contact.get('email', '')
+            })
+    
+    await db.users.update_one(
+        {'_id': user['_id']},
+        {'$set': {'emergency_contacts': valid_contacts}}
+    )
+    return {'message': 'Emergency contacts updated', 'count': len(valid_contacts)}
+
 # ===== CIVIL USER ROUTES =====
 @api_router.post("/panic/activate")
 async def activate_panic(panic_data: LocationPoint, user = Depends(get_current_user)):
@@ -382,6 +403,7 @@ async def activate_panic(panic_data: LocationPoint, user = Depends(get_current_u
         'robbery': 'Armed Robbery',
         'kidnapping': 'Kidnapping/Abduction',
         'burglary': 'Break-in/Burglary',
+        'breakin': 'Break-in/Burglary',
         'medical': 'Medical Emergency',
         'fire': 'Fire/Accident',
         'harassment': 'Harassment/Stalking',
