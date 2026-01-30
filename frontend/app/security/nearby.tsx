@@ -121,14 +121,30 @@ export default function SecurityNearby() {
 
   const startChat = async (userId: string) => {
     try {
-      const token = await getToken();
+      const token = await getAuthToken();
+      if (!token) {
+        router.replace('/auth/login');
+        return;
+      }
+      
       const response = await axios.post(`${BACKEND_URL}/api/chat/start`, 
         { to_user_id: userId },
         { headers: { Authorization: `Bearer ${token}` }, timeout: 10000 }
       );
-      router.push(`/security/chat/${response.data.conversation_id}`);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to start conversation');
+      
+      if (response.data?.conversation_id) {
+        router.push(`/security/chat/${response.data.conversation_id}`);
+      } else {
+        Alert.alert('Error', 'Could not start conversation');
+      }
+    } catch (error: any) {
+      console.error('[SecurityNearby] Start chat error:', error?.response?.data);
+      if (error?.response?.status === 401) {
+        await clearAuthData();
+        router.replace('/auth/login');
+      } else {
+        Alert.alert('Error', error.response?.data?.detail || 'Failed to start conversation');
+      }
     }
   };
 
