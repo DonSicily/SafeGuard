@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import Constants from 'expo-constants';
 import { getPendingCount, processQueue } from '../../utils/offlineQueue';
@@ -16,13 +18,16 @@ export default function CivilHome() {
   const [pendingUploads, setPendingUploads] = useState(0);
   const [userName, setUserName] = useState('');
   const [myReports, setMyReports] = useState<any[]>([]);
+  const [totalReportCount, setTotalReportCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [hasActivePanic, setHasActivePanic] = useState(false);
 
-  useEffect(() => {
-    initializeScreen();
-    const interval = setInterval(checkPendingUploads, 30000);
-    return () => clearInterval(interval);
-  }, []);
+  // Refresh on every screen focus
+  useFocusEffect(
+    React.useCallback(() => {
+      initializeScreen();
+    }, [])
+  );
 
   const initializeScreen = async () => {
     setLoading(true);
@@ -37,6 +42,10 @@ export default function CivilHome() {
       router.replace('/auth/login');
       return;
     }
+
+    // Check for active panic
+    const activePanic = await AsyncStorage.getItem('active_panic');
+    setHasActivePanic(!!activePanic);
     
     await Promise.all([
       checkUserStatus(),
@@ -48,17 +57,15 @@ export default function CivilHome() {
 
   const checkUserStatus = async () => {
     try {
-      // Get premium status from metadata first
       const metadata = await getUserMetadata();
       setIsPremium(metadata.isPremium);
       console.log('[CivilHome] Local metadata premium:', metadata.isPremium);
       
-      // Verify with backend
       const token = await getAuthToken();
       if (token) {
         try {
-          const response = await axios.get(`${BACKEND_URL}/api/user/profile`, {
-            headers: { Authorization: `Bearer ${token}` },
+          const response = await axios.get(`${BACKEND_URL}/api/user/profile?t=${Date.now()}`, {
+            headers: { Authorization: `Bearer ${token}`, 'Cache-Control': 'no-cache' },
             timeout: 10000
           });
           
@@ -71,7 +78,6 @@ export default function CivilHome() {
           }
         } catch (apiError: any) {
           console.log('[CivilHome] Could not verify with backend:', apiError?.response?.status);
-          // If 401, token is invalid - redirect to login
           if (apiError?.response?.status === 401) {
             console.log('[CivilHome] Token invalid, clearing and redirecting');
             await clearAuthData();
@@ -89,11 +95,14 @@ export default function CivilHome() {
       const token = await getAuthToken();
       if (!token) return;
       
-      const response = await axios.get(`${BACKEND_URL}/api/report/my-reports`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await axios.get(`${BACKEND_URL}/api/report/my-reports?t=${Date.now()}`, {
+        headers: { Authorization: `Bearer ${token}`, 'Cache-Control': 'no-cache' },
         timeout: 10000
       });
-      setMyReports(response.data.slice(0, 3)); // Show first 3 reports
+      
+      const reports = response.data || [];
+      setTotalReportCount(reports.length);
+      setMyReports(reports.slice(0, 3)); // Show first 3 reports in preview
     } catch (error) {
       console.log('[CivilHome] Could not load reports:', error);
     }
@@ -104,138 +113,138 @@ export default function CivilHome() {
     setPendingUploads(count);
   };
 
-  const handleRetryUploads = async () => {
-    Alert.alert(
-      'Retry Uploads',
-      `${pendingUploads} report(s) are waiting to be uploaded. Would you like to retry now?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Retry Now', 
-          onPress: async () => {
-            const result = await processQueue();
-            if (result.success > 0) {
-              Alert.alert('Success', `${result.success} report(s) uploaded successfully!`);
-            } else if (result.failed > 0) {
-              Alert.alert('Upload Failed', `${result.failed} report(s) failed. Will retry automatically when connection improves.`);
-            } else {
-              Alert.alert('Offline', 'No internet connection. Reports will upload automatically when you\'re back online.');
-            }
-            checkPendingUploads();
+  const handleProcessQueue = async () => {
+    const results = await processQueue();
+    checkPendingUploads();
+    Alert.alert('Upload Complete', `Processed ${results.length} items`);
+  };
+
+  const handlePanicPress = () => {
+    if (hasActivePanic) {
+      // Go to panic active screen to show "I'm Safe" button
+      router.push('/civil/panic-active');
+    } else {
+      // Start new panic
+      Alert.alert(
+        '🚨 Activate Panic Mode?',
+        'This will alert nearby security agencies and start tracking your location.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { 
+            text: 'Yes, Activate', 
+            style: 'destructive',
+            onPress: () => router.push('/civil/panic-active')
           }
-        }
-      ]
-    );
+        ]
+      );
+    }
   };
 
   const handleLogout = async () => {
-    console.log('[CivilHome] Logout initiated');
-    await clearAuthData();
-    console.log('[CivilHome] Auth data cleared, navigating to login');
-    router.replace('/auth/login');
+    Alert.alert('Logout', 'Are you sure you want to logout?', [
+      { text: 'Cancel', style: 'cancel' },
+      { 
+        text: 'Logout', 
+        style: 'destructive',
+        onPress: async () => {
+          console.log('[CivilHome] Logout initiated');
+          await clearAuthData();
+          router.replace('/auth/login');
+        }
+      }
+    ]);
   };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#3B82F6" />
+          <Text style={styles.loadingText}>Loading...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView style={styles.scrollView}>
         <View style={styles.header}>
           <View>
-            <Text style={styles.greeting}>Welcome to</Text>
-            <Text style={styles.appName}>SafeGuard</Text>
+            <Text style={styles.greeting}>Hello{userName ? `, ${userName}` : ''}!</Text>
+            <Text style={styles.subGreeting}>Stay safe with SafeGuard</Text>
           </View>
-          <View style={styles.headerRight}>
-            {isPremium && (
-              <View style={styles.premiumBadge}>
-                <Ionicons name="star" size={16} color="#FFD700" />
-                <Text style={styles.premiumText}>Premium</Text>
+          <TouchableOpacity onPress={() => router.push('/settings')}>
+            <Ionicons name="settings-outline" size={28} color="#fff" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Panic Button */}
+        <TouchableOpacity 
+          style={[styles.panicButton, hasActivePanic && styles.panicButtonActive]} 
+          onPress={handlePanicPress}
+        >
+          <Ionicons name={hasActivePanic ? "shield-checkmark" : "alert-circle"} size={48} color="#fff" />
+          <Text style={styles.panicText}>
+            {hasActivePanic ? "I'm Safe Now" : 'PANIC BUTTON'}
+          </Text>
+          <Text style={styles.panicSubtext}>
+            {hasActivePanic ? 'Tap to stop tracking' : 'Tap in emergency'}
+          </Text>
+        </TouchableOpacity>
+
+        {/* Quick Actions */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Quick Actions</Text>
+          <View style={styles.actionsGrid}>
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/report')}>
+              <View style={[styles.actionIcon, { backgroundColor: '#10B98120' }]}>
+                <Ionicons name="videocam" size={28} color="#10B981" />
               </View>
-            )}
-            <TouchableOpacity style={styles.settingsButton} onPress={() => router.push('/settings')}>
-              <Ionicons name="settings-outline" size={24} color="#fff" />
+              <Text style={styles.actionText}>Video Report</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/report/audio')}>
+              <View style={[styles.actionIcon, { backgroundColor: '#8B5CF620' }]}>
+                <Ionicons name="mic" size={28} color="#8B5CF6" />
+              </View>
+              <Text style={styles.actionText}>Audio Report</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.actionCard} 
+              onPress={() => {
+                if (isPremium) {
+                  router.push('/civil/escort');
+                } else {
+                  Alert.alert(
+                    'Premium Feature',
+                    'Security Escort requires premium. Upgrade now?',
+                    [
+                      { text: 'Later', style: 'cancel' },
+                      { text: 'Upgrade', onPress: () => router.push('/premium') }
+                    ]
+                  );
+                }
+              }}
+            >
+              <View style={[styles.actionIcon, { backgroundColor: '#3B82F620' }]}>
+                <Ionicons name="walk" size={28} color="#3B82F6" />
+              </View>
+              <Text style={styles.actionText}>Security Escort</Text>
+              {!isPremium && <Text style={styles.premiumBadge}>⭐ Premium</Text>}
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/report/list')}>
+              <View style={[styles.actionIcon, { backgroundColor: '#F59E0B20' }]}>
+                <Ionicons name="folder" size={28} color="#F59E0B" />
+              </View>
+              <Text style={styles.actionText}>My Reports</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        <View style={styles.quickActions}>
-          <Text style={styles.sectionTitle}>Quick Actions</Text>
-
-          <TouchableOpacity style={styles.panicCard} onPress={() => router.push('/civil/panic-active')}>
-            <View style={styles.cardLeft}>
-              <View style={styles.iconCircle}>
-                <Ionicons name="alert-circle" size={32} color="#EF4444" />
-              </View>
-              <View>
-                <Text style={styles.cardTitle}>Panic Button</Text>
-                <Text style={styles.cardDescription}>Emergency alert & tracking</Text>
-              </View>
-            </View>
-            <Ionicons name="chevron-forward" size={24} color="#64748B" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.card, !isPremium && styles.disabledCard]}
-            onPress={() => isPremium ? router.push('/civil/escort') : router.push('/premium')}
-          >
-            <View style={styles.cardLeft}>
-              <View style={styles.iconCircle}>
-                <Ionicons name="navigate" size={28} color="#3B82F6" />
-              </View>
-              <View>
-                <Text style={styles.cardTitle}>Security Escort {!isPremium && '🔒'}</Text>
-                <Text style={styles.cardDescription}>{isPremium ? 'Track your journey' : 'Premium feature'}</Text>
-              </View>
-            </View>
-            <Ionicons name="chevron-forward" size={24} color="#64748B" />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.card} onPress={() => router.push('/report')}>
-            <View style={styles.cardLeft}>
-              <View style={styles.iconCircle}>
-                <Ionicons name="videocam" size={28} color="#10B981" />
-              </View>
-              <View>
-                <Text style={styles.cardTitle}>Live Report</Text>
-                <Text style={styles.cardDescription}>Record & report incidents</Text>
-              </View>
-            </View>
-            <Ionicons name="chevron-forward" size={24} color="#64748B" />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.card} onPress={() => router.push('/report/audio')}>
-            <View style={styles.cardLeft}>
-              <View style={styles.iconCircle}>
-                <Ionicons name="mic" size={28} color="#8B5CF6" />
-              </View>
-              <View>
-                <Text style={styles.cardTitle}>Audio Report</Text>
-                <Text style={styles.cardDescription}>Voice message report</Text>
-              </View>
-            </View>
-            <Ionicons name="chevron-forward" size={24} color="#64748B" />
-          </TouchableOpacity>
-        </View>
-
-        {/* Pending Uploads Indicator */}
-        {pendingUploads > 0 && (
-          <TouchableOpacity style={styles.pendingUploadsCard} onPress={handleRetryUploads}>
-            <View style={styles.cardLeft}>
-              <View style={[styles.iconCircle, { backgroundColor: '#F59E0B20' }]}>
-                <Ionicons name="cloud-upload-outline" size={28} color="#F59E0B" />
-              </View>
-              <View>
-                <Text style={styles.cardTitle}>Pending Uploads</Text>
-                <Text style={styles.cardDescription}>{pendingUploads} report(s) waiting to upload</Text>
-              </View>
-            </View>
-            <View style={styles.pendingBadge}>
-              <Text style={styles.pendingBadgeText}>{pendingUploads}</Text>
-            </View>
-          </TouchableOpacity>
-        )}
-
+        {/* My Reports Preview */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>My Reports ({myReports.length})</Text>
+            <Text style={styles.sectionTitle}>My Reports ({totalReportCount})</Text>
             <TouchableOpacity onPress={() => router.push('/report/list')}>
               <Text style={styles.viewAll}>View All</Text>
             </TouchableOpacity>
@@ -244,7 +253,7 @@ export default function CivilHome() {
             <Text style={styles.placeholderText}>Your submitted reports will appear here</Text>
           ) : (
             myReports.map((report: any) => (
-              <View key={report.id} style={styles.reportItem}>
+              <View key={report.id || report._id} style={styles.reportItem}>
                 <Ionicons
                   name={report.type === 'video' ? 'videocam' : 'mic'}
                   size={20}
@@ -266,20 +275,26 @@ export default function CivilHome() {
           )}
         </View>
 
-        {!isPremium && (
-          <TouchableOpacity style={styles.upgradeCard} onPress={() => router.push('/premium')}>
-            <View>
-              <Text style={styles.upgradeTitle}>Upgrade to Premium</Text>
-              <Text style={styles.upgradeDescription}>Unlock Security Escort and more features</Text>
+        {/* Pending Uploads */}
+        {pendingUploads > 0 && (
+          <View style={styles.section}>
+            <View style={styles.pendingCard}>
+              <Ionicons name="cloud-upload" size={24} color="#F59E0B" />
+              <Text style={styles.pendingText}>{pendingUploads} pending upload(s)</Text>
+              <TouchableOpacity style={styles.uploadButton} onPress={handleProcessQueue}>
+                <Text style={styles.uploadButtonText}>Upload Now</Text>
+              </TouchableOpacity>
             </View>
-            <Ionicons name="arrow-forward" size={24} color="#FFD700" />
-          </TouchableOpacity>
+          </View>
         )}
 
+        {/* Logout */}
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <Ionicons name="log-out-outline" size={20} color="#EF4444" />
+          <Ionicons name="log-out-outline" size={24} color="#EF4444" />
           <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>
+
+        <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -287,35 +302,26 @@ export default function CivilHome() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0F172A' },
-  scrollContent: { padding: 20 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 },
-  greeting: { fontSize: 16, color: '#94A3B8' },
-  appName: { fontSize: 28, fontWeight: 'bold', color: '#fff', marginTop: 4 },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  premiumBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1E293B', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, gap: 4 },
-  premiumText: { color: '#FFD700', fontSize: 12, fontWeight: '600' },
-  settingsButton: { padding: 8 },
-  quickActions: { marginBottom: 32 },
-  sectionTitle: { fontSize: 20, fontWeight: '600', color: '#fff', marginBottom: 16 },
-  panicCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#1E293B', padding: 16, borderRadius: 16, marginBottom: 12, borderWidth: 2, borderColor: '#EF4444' },
-  card: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#1E293B', padding: 16, borderRadius: 16, marginBottom: 12 },
-  disabledCard: { opacity: 0.6 },
-  cardLeft: { flexDirection: 'row', alignItems: 'center', gap: 16 },
-  iconCircle: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#0F172A', justifyContent: 'center', alignItems: 'center' },
-  cardTitle: { fontSize: 16, fontWeight: '600', color: '#fff', marginBottom: 4 },
-  cardDescription: { fontSize: 14, color: '#94A3B8' },
-  section: { marginBottom: 32 },
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  loadingText: { color: '#94A3B8', marginTop: 12 },
+  scrollView: { flex: 1 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20 },
+  greeting: { fontSize: 28, fontWeight: 'bold', color: '#fff' },
+  subGreeting: { fontSize: 16, color: '#94A3B8', marginTop: 4 },
+  panicButton: { margin: 20, backgroundColor: '#EF4444', borderRadius: 24, padding: 32, alignItems: 'center' },
+  panicButtonActive: { backgroundColor: '#10B981' },
+  panicText: { fontSize: 24, fontWeight: 'bold', color: '#fff', marginTop: 12 },
+  panicSubtext: { fontSize: 14, color: '#ffffff90', marginTop: 4 },
+  section: { padding: 20, paddingTop: 0 },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  sectionTitle: { fontSize: 20, fontWeight: '600', color: '#fff', marginBottom: 12 },
   viewAll: { fontSize: 14, color: '#3B82F6', fontWeight: '600' },
-  placeholderText: { fontSize: 14, color: '#64748B', textAlign: 'center', paddingVertical: 32 },
-  upgradeCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1E293B', padding: 20, borderRadius: 16, marginBottom: 24, borderWidth: 1, borderColor: '#FFD700' },
-  upgradeTitle: { fontSize: 18, fontWeight: '600', color: '#FFD700', marginBottom: 4 },
-  upgradeDescription: { fontSize: 14, color: '#94A3B8' },
-  pendingUploadsCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#1E293B', padding: 16, borderRadius: 16, marginBottom: 24, borderWidth: 1, borderColor: '#F59E0B' },
-  pendingBadge: { backgroundColor: '#F59E0B', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
-  pendingBadgeText: { color: '#fff', fontSize: 14, fontWeight: 'bold' },
-  logoutButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16 },
-  logoutText: { fontSize: 16, color: '#EF4444', fontWeight: '600' },
+  actionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  actionCard: { width: '47%', backgroundColor: '#1E293B', borderRadius: 16, padding: 16, alignItems: 'center' },
+  actionIcon: { width: 56, height: 56, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
+  actionText: { fontSize: 14, color: '#fff', fontWeight: '500', textAlign: 'center' },
+  premiumBadge: { fontSize: 11, color: '#F59E0B', marginTop: 4 },
+  placeholderText: { fontSize: 14, color: '#64748B', textAlign: 'center', paddingVertical: 20 },
   reportItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1E293B', padding: 12, borderRadius: 12, marginBottom: 8, gap: 12 },
   reportInfo: { flex: 1 },
   reportType: { fontSize: 14, fontWeight: '500', color: '#fff' },
@@ -324,4 +330,10 @@ const styles = StyleSheet.create({
   uploadedBadge: { backgroundColor: '#10B98120' },
   pendingBadge: { backgroundColor: '#F59E0B20' },
   statusBadgeText: { fontSize: 12, fontWeight: '600', color: '#10B981' },
+  pendingCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F59E0B20', borderRadius: 12, padding: 16, gap: 12 },
+  pendingText: { flex: 1, fontSize: 14, color: '#F59E0B', fontWeight: '500' },
+  uploadButton: { backgroundColor: '#F59E0B', paddingVertical: 8, paddingHorizontal: 16, borderRadius: 8 },
+  uploadButtonText: { color: '#fff', fontWeight: '600' },
+  logoutButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, marginHorizontal: 20, backgroundColor: '#1E293B', borderRadius: 12, gap: 8 },
+  logoutText: { fontSize: 16, color: '#EF4444', fontWeight: '600' },
 });
