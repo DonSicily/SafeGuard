@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, TextInput, Alert, ActivityIndicator, FlatList } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, TextInput, Alert, ActivityIndicator, FlatList, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,6 +11,12 @@ const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || process.env.EXPO_
 
 const ICON_OPTIONS = ['shield', 'shield-checkmark', 'lock-closed', 'lock-open', 'key', 'finger-print', 'eye', 'eye-off', 'pulse', 'heart', 'flash', 'star', 'moon', 'sunny', 'cloudy', 'rainy', 'snow', 'thunderstorm', 'partly-sunny', 'water', 'flame', 'leaf', 'flower', 'paw', 'bug', 'airplane', 'car', 'bicycle', 'boat', 'bus', 'rocket', 'train', 'walk', 'fitness', 'basketball', 'football', 'baseball', 'golf', 'tennisball', 'trophy', 'medal', 'ribbon', 'rose', 'earth', 'globe', 'map', 'location', 'navigate', 'compass', 'pin', 'home', 'business', 'school', 'library', 'briefcase', 'calendar', 'time', 'alarm', 'stopwatch', 'timer', 'notifications', 'chatbubble', 'mail', 'call', 'videocam', 'camera', 'mic', 'musical-notes', 'volume-high', 'headset', 'cart', 'bag', 'pricetag', 'card', 'cash', 'gift', 'balloon', 'cafe', 'pizza', 'beer', 'wine', 'ice-cream', 'nutrition', 'restaurant', 'fast-food', 'book', 'newspaper', 'bookmark', 'document', 'folder', 'calculator', 'clipboard', 'create', 'pencil', 'brush', 'color-palette', 'image', 'images', 'aperture', 'barcode'];
 
+interface EmergencyContact {
+  name: string;
+  phone: string;
+  email: string;
+}
+
 export default function Settings() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -19,6 +25,11 @@ export default function Settings() {
   const [selectedIcon, setSelectedIcon] = useState('shield');
   const [showIconPicker, setShowIconPicker] = useState(false);
   const [userProfile, setUserProfile] = useState<any>(null);
+  const [emergencyContacts, setEmergencyContacts] = useState<EmergencyContact[]>([
+    { name: '', phone: '', email: '' },
+    { name: '', phone: '', email: '' }
+  ]);
+  const [savingContacts, setSavingContacts] = useState(false);
 
   useEffect(() => {
     initializeSettings();
@@ -48,6 +59,15 @@ export default function Settings() {
       setUserProfile(response.data);
       setAppName(response.data.app_name || 'SafeGuard');
       setSelectedIcon(response.data.app_logo || 'shield');
+      
+      // Load emergency contacts
+      if (response.data.emergency_contacts && response.data.emergency_contacts.length > 0) {
+        const contacts = [...response.data.emergency_contacts];
+        while (contacts.length < 2) {
+          contacts.push({ name: '', phone: '', email: '' });
+        }
+        setEmergencyContacts(contacts);
+      }
     } catch (error: any) {
       console.error('[Settings] Failed to load profile:', error?.response?.status);
       if (error?.response?.status === 401) {
@@ -71,7 +91,6 @@ export default function Settings() {
         return;
       }
       
-      console.log('[Settings] Saving customization...');
       await axios.put(`${BACKEND_URL}/api/user/customize-app`, {
         app_name: appName,
         app_logo: selectedIcon
@@ -80,7 +99,6 @@ export default function Settings() {
         timeout: 10000
       });
 
-      console.log('[Settings] Customization saved');
       Alert.alert('Success', 'App customization saved');
     } catch (error: any) {
       console.error('[Settings] Save error:', error?.response?.data);
@@ -96,176 +114,300 @@ export default function Settings() {
     }
   };
 
-  const renderIconItem = ({ item }: { item: string }) => (
-    <TouchableOpacity
-      style={[styles.iconItem, selectedIcon === item && styles.iconItemSelected]}
-      onPress={() => { setSelectedIcon(item); setShowIconPicker(false); }}
-    >
-      <Ionicons name={item as any} size={32} color="#fff" />
-    </TouchableOpacity>
-  );
+  const updateEmergencyContact = (index: number, field: keyof EmergencyContact, value: string) => {
+    const newContacts = [...emergencyContacts];
+    newContacts[index] = { ...newContacts[index], [field]: value };
+    setEmergencyContacts(newContacts);
+  };
+
+  const saveEmergencyContacts = async () => {
+    // Validate at least one contact has phone number
+    const validContacts = emergencyContacts.filter(c => c.phone.trim() !== '');
+    if (validContacts.length === 0) {
+      Alert.alert('Error', 'Please add at least one emergency contact with phone number');
+      return;
+    }
+
+    setSavingContacts(true);
+    try {
+      const token = await getAuthToken();
+      if (!token) {
+        router.replace('/auth/login');
+        return;
+      }
+      
+      await axios.put(`${BACKEND_URL}/api/user/emergency-contacts`, {
+        contacts: emergencyContacts.filter(c => c.phone.trim() !== '')
+      }, { 
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 10000
+      });
+
+      Alert.alert('Success', 'Emergency contacts saved. They will be notified during panic events.');
+    } catch (error: any) {
+      console.error('[Settings] Save contacts error:', error?.response?.data);
+      Alert.alert('Error', 'Failed to save emergency contacts');
+    } finally {
+      setSavingContacts(false);
+    }
+  };
+
+  if (pageLoading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#3B82F6" />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color="#fff" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Settings</Text>
-        <View style={styles.placeholder} />
-      </View>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+      >
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <Ionicons name="arrow-back" size={24} color="#fff" />
+          </TouchableOpacity>
+          <Text style={styles.title}>Settings</Text>
+          <View style={{ width: 24 }} />
+        </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Profile</Text>
+        <ScrollView style={styles.content}>
+          {/* User Profile Section */}
           {userProfile && (
-            <View style={styles.profileCard}>
-              <View style={styles.profileRow}>
-                <Text style={styles.profileLabel}>Email:</Text>
-                <Text style={styles.profileValue}>{userProfile.email}</Text>
-              </View>
-              <View style={styles.profileRow}>
-                <Text style={styles.profileLabel}>Status:</Text>
-                <View style={styles.statusBadge}>
-                  <Text style={styles.statusText}>{userProfile.is_premium ? 'Premium' : 'Basic'}</Text>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Your Profile</Text>
+              <View style={styles.profileCard}>
+                <View style={styles.profileAvatar}>
+                  <Ionicons name="person" size={40} color="#3B82F6" />
+                </View>
+                <View style={styles.profileInfo}>
+                  <Text style={styles.profileName}>{userProfile.full_name || 'User'}</Text>
+                  <Text style={styles.profileEmail}>{userProfile.email}</Text>
+                  {userProfile.phone && (
+                    <Text style={styles.profilePhone}>{userProfile.phone}</Text>
+                  )}
+                  <View style={[styles.premiumBadge, userProfile.is_premium ? styles.premiumActive : styles.premiumInactive]}>
+                    <Text style={styles.premiumText}>
+                      {userProfile.is_premium ? '⭐ Premium' : 'Free Plan'}
+                    </Text>
+                  </View>
                 </View>
               </View>
             </View>
           )}
-        </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>App Customization</Text>
-          <Text style={styles.sectionDescription}>Change app name and icon for anonymity</Text>
+          {/* App Customization Section */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>App Customization</Text>
+            <Text style={styles.sectionDescription}>Change app name and icon for anonymity</Text>
 
-          <View style={styles.customizationCard}>
-            <Text style={styles.label}>App Name</Text>
-            <TextInput
-              style={styles.input}
-              value={appName}
-              onChangeText={setAppName}
-              placeholder="Enter app name"
-              placeholderTextColor="#64748B"
-            />
+            <View style={styles.customizationCard}>
+              <Text style={styles.inputLabel}>App Name</Text>
+              <TextInput
+                style={styles.input}
+                value={appName}
+                onChangeText={setAppName}
+                placeholder="Enter app name"
+                placeholderTextColor="#64748B"
+              />
 
-            <Text style={[styles.label, { marginTop: 20 }]}>App Icon</Text>
-            <TouchableOpacity style={styles.iconSelector} onPress={() => setShowIconPicker(!showIconPicker)}>
-              <View style={styles.selectedIconContainer}>
-                <Ionicons name={selectedIcon as any} size={40} color="#fff" />
-                <Text style={styles.iconName}>{selectedIcon}</Text>
-              </View>
-              <Ionicons name="chevron-down" size={24} color="#64748B" />
-            </TouchableOpacity>
+              <Text style={styles.inputLabel}>App Icon</Text>
+              <TouchableOpacity style={styles.iconSelector} onPress={() => setShowIconPicker(!showIconPicker)}>
+                <View style={styles.selectedIconContainer}>
+                  <Ionicons name={selectedIcon as any} size={32} color="#3B82F6" />
+                </View>
+                <Text style={styles.iconSelectorText}>Tap to change icon</Text>
+                <Ionicons name={showIconPicker ? 'chevron-up' : 'chevron-down'} size={24} color="#64748B" />
+              </TouchableOpacity>
 
-            {showIconPicker && (
-              <View style={styles.iconPicker}>
-                <Text style={styles.iconPickerTitle}>Choose from 100 icons:</Text>
-                <FlatList
-                  data={ICON_OPTIONS}
-                  renderItem={renderIconItem}
-                  keyExtractor={(item) => item}
-                  numColumns={5}
-                  scrollEnabled={false}
-                  contentContainerStyle={styles.iconGrid}
+              {showIconPicker && (
+                <View style={styles.iconGrid}>
+                  <FlatList
+                    data={ICON_OPTIONS.slice(0, 40)}
+                    numColumns={6}
+                    keyExtractor={(item) => item}
+                    renderItem={({ item }) => (
+                      <TouchableOpacity
+                        style={[styles.iconOption, selectedIcon === item && styles.iconOptionSelected]}
+                        onPress={() => { setSelectedIcon(item); setShowIconPicker(false); }}
+                      >
+                        <Ionicons name={item as any} size={24} color={selectedIcon === item ? '#3B82F6' : '#94A3B8'} />
+                      </TouchableOpacity>
+                    )}
+                  />
+                </View>
+              )}
+
+              <TouchableOpacity style={styles.saveButton} onPress={saveCustomization} disabled={loading}>
+                {loading ? <ActivityIndicator color="#fff" /> : (
+                  <>
+                    <Ionicons name="save" size={20} color="#fff" />
+                    <Text style={styles.saveButtonText}>Save Customization</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Emergency Contacts Section */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Emergency Contacts</Text>
+            <Text style={styles.sectionDescription}>These contacts will be notified via SMS during panic events</Text>
+
+            {emergencyContacts.map((contact, index) => (
+              <View key={index} style={styles.contactCard}>
+                <Text style={styles.contactHeader}>Contact {index + 1}</Text>
+                
+                <Text style={styles.inputLabel}>Name</Text>
+                <TextInput
+                  style={styles.input}
+                  value={contact.name}
+                  onChangeText={(v) => updateEmergencyContact(index, 'name', v)}
+                  placeholder="Contact name"
+                  placeholderTextColor="#64748B"
+                />
+                
+                <Text style={styles.inputLabel}>Phone Number *</Text>
+                <TextInput
+                  style={styles.input}
+                  value={contact.phone}
+                  onChangeText={(v) => updateEmergencyContact(index, 'phone', v)}
+                  placeholder="Phone number"
+                  placeholderTextColor="#64748B"
+                  keyboardType="phone-pad"
+                />
+                
+                <Text style={styles.inputLabel}>Email (Optional)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={contact.email}
+                  onChangeText={(v) => updateEmergencyContact(index, 'email', v)}
+                  placeholder="Email address"
+                  placeholderTextColor="#64748B"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
                 />
               </View>
-            )}
+            ))}
 
-            <TouchableOpacity style={styles.saveButton} onPress={saveCustomization} disabled={loading}>
-              {loading ? <ActivityIndicator color="#fff" /> : (
+            <View style={styles.smsPreview}>
+              <Text style={styles.smsPreviewTitle}>📱 SMS Preview:</Text>
+              <Text style={styles.smsPreviewText}>
+                Hello {emergencyContacts[0]?.name || '[Contact Name]'}, Kindly reach-out to your {userProfile?.full_name || '[User Name]'} - {userProfile?.phone || '[User Phone]'} who has activated a Panic Emergency. Thanks{"\n\n"}- Se-Q Securities
+              </Text>
+            </View>
+
+            <TouchableOpacity style={styles.saveContactsButton} onPress={saveEmergencyContacts} disabled={savingContacts}>
+              {savingContacts ? <ActivityIndicator color="#fff" /> : (
                 <>
-                  <Ionicons name="save" size={20} color="#fff" />
-                  <Text style={styles.saveButtonText}>Save Customization</Text>
+                  <Ionicons name="people" size={20} color="#fff" />
+                  <Text style={styles.saveButtonText}>Save Emergency Contacts</Text>
                 </>
               )}
             </TouchableOpacity>
           </View>
-        </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Emergency Contacts</Text>
-          <Text style={styles.sectionDescription}>These contacts will be notified during panic events</Text>
-          <View style={styles.emergencyCard}>
-            <View style={styles.contactItem}>
-              <View style={styles.contactIcon}>
-                <Ionicons name="call" size={24} color="#EF4444" />
+          {/* Quick Emergency Numbers */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Emergency Services</Text>
+            <View style={styles.emergencyServicesCard}>
+              <View style={styles.emergencyService}>
+                <View style={[styles.serviceIcon, { backgroundColor: '#EF444420' }]}>
+                  <Ionicons name="call" size={24} color="#EF4444" />
+                </View>
+                <View style={styles.serviceInfo}>
+                  <Text style={styles.serviceName}>Police / Emergency</Text>
+                  <Text style={styles.serviceNumber}>911 / 112</Text>
+                </View>
               </View>
-              <View style={styles.contactInfo}>
-                <Text style={styles.contactLabel}>Local Police</Text>
-                <Text style={styles.contactNumber}>911</Text>
+              <View style={styles.emergencyService}>
+                <View style={[styles.serviceIcon, { backgroundColor: '#10B98120' }]}>
+                  <Ionicons name="medkit" size={24} color="#10B981" />
+                </View>
+                <View style={styles.serviceInfo}>
+                  <Text style={styles.serviceName}>Medical Emergency</Text>
+                  <Text style={styles.serviceNumber}>112</Text>
+                </View>
               </View>
-            </View>
-            <View style={styles.contactItem}>
-              <View style={styles.contactIcon}>
-                <Ionicons name="medkit" size={24} color="#10B981" />
-              </View>
-              <View style={styles.contactInfo}>
-                <Text style={styles.contactLabel}>Medical Emergency</Text>
-                <Text style={styles.contactNumber}>112</Text>
-              </View>
-            </View>
-            <View style={styles.contactItem}>
-              <View style={styles.contactIcon}>
-                <Ionicons name="flame" size={24} color="#F59E0B" />
-              </View>
-              <View style={styles.contactInfo}>
-                <Text style={styles.contactLabel}>Fire Department</Text>
-                <Text style={styles.contactNumber}>101</Text>
+              <View style={styles.emergencyService}>
+                <View style={[styles.serviceIcon, { backgroundColor: '#F59E0B20' }]}>
+                  <Ionicons name="flame" size={24} color="#F59E0B" />
+                </View>
+                <View style={styles.serviceInfo}>
+                  <Text style={styles.serviceName}>Fire Service</Text>
+                  <Text style={styles.serviceNumber}>101</Text>
+                </View>
               </View>
             </View>
           </View>
-        </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>About</Text>
-          <View style={styles.aboutCard}>
-            <Text style={styles.aboutText}>SafeGuard Security App</Text>
-            <Text style={styles.aboutVersion}>Version 2.0.0</Text>
-            <Text style={styles.aboutDescription}>Two-tier security system with geospatial tracking</Text>
+          {/* About Section */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>About</Text>
+            <View style={styles.aboutCard}>
+              <Ionicons name="shield-checkmark" size={48} color="#3B82F6" />
+              <Text style={styles.aboutTitle}>SafeGuard</Text>
+              <Text style={styles.aboutVersion}>Version 1.0.0</Text>
+              <Text style={styles.aboutDescription}>Your personal safety companion</Text>
+            </View>
           </View>
-        </View>
-      </ScrollView>
+
+          <View style={{ height: 40 }} />
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0F172A' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16 },
-  backButton: { padding: 4 },
-  headerTitle: { fontSize: 20, fontWeight: '600', color: '#fff' },
-  placeholder: { width: 32 },
-  content: { padding: 20 },
-  section: { marginBottom: 32 },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20 },
+  title: { fontSize: 20, fontWeight: 'bold', color: '#fff' },
+  content: { flex: 1, padding: 16 },
+  section: { marginBottom: 24 },
   sectionTitle: { fontSize: 18, fontWeight: '600', color: '#fff', marginBottom: 8 },
-  sectionDescription: { fontSize: 14, color: '#94A3B8', marginBottom: 16 },
-  profileCard: { backgroundColor: '#1E293B', borderRadius: 12, padding: 16 },
-  profileRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  profileLabel: { fontSize: 14, color: '#94A3B8' },
-  profileValue: { fontSize: 16, color: '#fff', fontWeight: '500' },
-  statusBadge: { backgroundColor: '#3B82F6', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12 },
-  statusText: { fontSize: 12, color: '#fff', fontWeight: '600' },
-  customizationCard: { backgroundColor: '#1E293B', borderRadius: 12, padding: 20 },
-  label: { fontSize: 14, fontWeight: '600', color: '#fff', marginBottom: 8 },
-  input: { backgroundColor: '#0F172A', borderRadius: 8, padding: 12, color: '#fff', fontSize: 16, borderWidth: 1, borderColor: '#334155' },
-  iconSelector: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#0F172A', borderRadius: 8, padding: 12, borderWidth: 1, borderColor: '#334155' },
-  selectedIconContainer: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  iconName: { fontSize: 16, color: '#fff' },
-  iconPicker: { marginTop: 16 },
-  iconPickerTitle: { fontSize: 14, color: '#94A3B8', marginBottom: 12 },
-  iconGrid: { gap: 8 },
-  iconItem: { flex: 1, aspectRatio: 1, backgroundColor: '#0F172A', borderRadius: 8, justifyContent: 'center', alignItems: 'center', margin: 4, borderWidth: 2, borderColor: 'transparent' },
-  iconItemSelected: { borderColor: '#3B82F6' },
-  saveButton: { flexDirection: 'row', backgroundColor: '#3B82F6', borderRadius: 8, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 20 },
+  sectionDescription: { fontSize: 14, color: '#64748B', marginBottom: 16 },
+  profileCard: { backgroundColor: '#1E293B', borderRadius: 16, padding: 20, flexDirection: 'row', alignItems: 'center' },
+  profileAvatar: { width: 70, height: 70, borderRadius: 35, backgroundColor: '#0F172A', justifyContent: 'center', alignItems: 'center', marginRight: 16 },
+  profileInfo: { flex: 1 },
+  profileName: { fontSize: 18, fontWeight: '600', color: '#fff', marginBottom: 4 },
+  profileEmail: { fontSize: 14, color: '#94A3B8', marginBottom: 2 },
+  profilePhone: { fontSize: 14, color: '#64748B', marginBottom: 8 },
+  premiumBadge: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, alignSelf: 'flex-start' },
+  premiumActive: { backgroundColor: '#F59E0B20' },
+  premiumInactive: { backgroundColor: '#64748B20' },
+  premiumText: { fontSize: 12, fontWeight: '600', color: '#F59E0B' },
+  customizationCard: { backgroundColor: '#1E293B', borderRadius: 16, padding: 20 },
+  inputLabel: { fontSize: 14, color: '#94A3B8', marginBottom: 8, marginTop: 16 },
+  input: { backgroundColor: '#0F172A', borderRadius: 12, padding: 16, color: '#fff', fontSize: 16 },
+  iconSelector: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0F172A', borderRadius: 12, padding: 16 },
+  selectedIconContainer: { width: 48, height: 48, borderRadius: 12, backgroundColor: '#3B82F620', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  iconSelectorText: { flex: 1, color: '#94A3B8', fontSize: 14 },
+  iconGrid: { marginTop: 12, backgroundColor: '#0F172A', borderRadius: 12, padding: 12 },
+  iconOption: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center', borderRadius: 8, margin: 2 },
+  iconOptionSelected: { backgroundColor: '#3B82F620' },
+  saveButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#3B82F6', paddingVertical: 14, borderRadius: 12, marginTop: 20 },
   saveButtonText: { fontSize: 16, fontWeight: '600', color: '#fff' },
-  aboutCard: { backgroundColor: '#1E293B', borderRadius: 12, padding: 20, alignItems: 'center' },
-  aboutText: { fontSize: 18, fontWeight: '600', color: '#fff', marginBottom: 8 },
-  aboutVersion: { fontSize: 14, color: '#64748B', marginBottom: 16 },
-  aboutDescription: { fontSize: 14, color: '#94A3B8', textAlign: 'center', lineHeight: 20 },
-  emergencyCard: { backgroundColor: '#1E293B', borderRadius: 12, padding: 16 },
-  contactItem: { flexDirection: 'row', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderBottomColor: '#334155' },
-  contactIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#0F172A', justifyContent: 'center', alignItems: 'center', marginRight: 16 },
-  contactInfo: { flex: 1 },
-  contactLabel: { fontSize: 16, fontWeight: '600', color: '#fff', marginBottom: 2 },
-  contactNumber: { fontSize: 14, color: '#64748B' },
+  contactCard: { backgroundColor: '#1E293B', borderRadius: 16, padding: 20, marginBottom: 16 },
+  contactHeader: { fontSize: 16, fontWeight: '600', color: '#3B82F6', marginBottom: 8 },
+  smsPreview: { backgroundColor: '#1E293B', borderRadius: 12, padding: 16, marginBottom: 16 },
+  smsPreviewTitle: { fontSize: 14, fontWeight: '600', color: '#fff', marginBottom: 8 },
+  smsPreviewText: { fontSize: 13, color: '#94A3B8', lineHeight: 20 },
+  saveContactsButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#10B981', paddingVertical: 14, borderRadius: 12 },
+  emergencyServicesCard: { backgroundColor: '#1E293B', borderRadius: 16, padding: 16 },
+  emergencyService: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#334155' },
+  serviceIcon: { width: 48, height: 48, borderRadius: 24, justifyContent: 'center', alignItems: 'center', marginRight: 16 },
+  serviceInfo: { flex: 1 },
+  serviceName: { fontSize: 16, fontWeight: '500', color: '#fff', marginBottom: 2 },
+  serviceNumber: { fontSize: 14, color: '#64748B' },
+  aboutCard: { backgroundColor: '#1E293B', borderRadius: 16, padding: 24, alignItems: 'center' },
+  aboutTitle: { fontSize: 22, fontWeight: 'bold', color: '#fff', marginTop: 12 },
+  aboutVersion: { fontSize: 14, color: '#64748B', marginTop: 4 },
+  aboutDescription: { fontSize: 14, color: '#94A3B8', textAlign: 'center', marginTop: 8 },
 });

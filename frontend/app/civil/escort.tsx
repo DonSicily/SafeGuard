@@ -2,8 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import Constants from 'expo-constants';
 import { getAuthToken, getUserMetadata, clearAuthData } from '../../utils/auth';
@@ -17,69 +19,67 @@ export default function Escort() {
   const [checkingPremium, setCheckingPremium] = useState(true);
   const [isPremium, setIsPremium] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [startTime, setStartTime] = useState<string | null>(null);
   const intervalRef = useRef<any>(null);
 
-  useEffect(() => {
-    checkPremiumStatus();
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, []);
+  // Check for active escort on every page focus
+  useFocusEffect(
+    React.useCallback(() => {
+      checkActiveEscort();
+      return () => {
+        if (intervalRef.current) clearInterval(intervalRef.current);
+      };
+    }, [])
+  );
 
-  const checkPremiumStatus = async () => {
+  const checkActiveEscort = async () => {
     setCheckingPremium(true);
     try {
       const token = await getAuthToken();
       if (!token) {
-        Alert.alert('Error', 'Please login again');
         router.replace('/auth/login');
         return;
       }
 
-      // First check local metadata
+      // Check local storage for active escort
+      const storedEscort = await AsyncStorage.getItem('active_escort');
+      if (storedEscort) {
+        const escortData = JSON.parse(storedEscort);
+        setIsTracking(true);
+        setSessionId(escortData.session_id);
+        setStartTime(escortData.started_at);
+        startLocationTracking(token);
+      }
+
+      // Verify premium status
       const metadata = await getUserMetadata();
       if (metadata.isPremium) {
         setIsPremium(true);
-        setCheckingPremium(false);
-        return;
-      }
-
-      // Then verify with backend
-      const response = await axios.get(`${BACKEND_URL}/api/user/profile`, {
-        headers: { Authorization: `Bearer ${token}` },
-        timeout: 10000
-      });
-
-      const premium = response.data?.is_premium === true;
-      console.log('[Escort] Premium status from backend:', premium);
-      setIsPremium(premium);
-      
-      if (!premium) {
-        Alert.alert(
-          'Premium Feature',
-          'Security Escort is a premium feature. Would you like to upgrade?',
-          [
-            { text: 'Go Back', onPress: () => router.back() },
-            { text: 'Upgrade', onPress: () => router.replace('/premium') }
-          ]
-        );
+      } else {
+        // Verify with backend
+        const response = await axios.get(`${BACKEND_URL}/api/user/profile`, {
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 10000
+        });
+        const premium = response.data?.is_premium === true;
+        setIsPremium(premium);
+        
+        if (!premium && !storedEscort) {
+          Alert.alert(
+            'Premium Feature',
+            'Security Escort is a premium feature. Would you like to upgrade?',
+            [
+              { text: 'Go Back', onPress: () => router.back() },
+              { text: 'Upgrade', onPress: () => router.replace('/premium') }
+            ]
+          );
+        }
       }
     } catch (error: any) {
-      console.error('[Escort] Error checking premium:', error?.response?.status);
+      console.error('[Escort] Error:', error?.response?.status);
       if (error?.response?.status === 401) {
         await clearAuthData();
         router.replace('/auth/login');
-        return;
-      }
-      // Fallback to local metadata
-      const metadata = await getUserMetadata();
-      const premium = metadata.isPremium;
-      setIsPremium(premium);
-      
-      if (!premium) {
-        Alert.alert('Premium Required', 'This feature requires premium subscription.', [
-          { text: 'OK', onPress: () => router.back() }
-        ]);
       }
     } finally {
       setCheckingPremium(false);
@@ -123,10 +123,21 @@ export default function Escort() {
         timeout: 15000 
       });
 
-      setSessionId(response.data.session_id);
+      const newSessionId = response.data.session_id;
+      const startedAt = new Date().toISOString();
+
+      // Save to local storage for persistence
+      await AsyncStorage.setItem('active_escort', JSON.stringify({
+        session_id: newSessionId,
+        started_at: startedAt
+      }));
+
+      setSessionId(newSessionId);
+      setStartTime(startedAt);
       setIsTracking(true);
-      startLocationTracking(token!);
-      Alert.alert('Success', 'Escort tracking started');
+      startLocationTracking(token);
+      
+      Alert.alert('Success', 'Escort tracking started! Nearby security can now track your journey.');
     } catch (error: any) {
       console.error('[Escort] Start error:', error?.response?.data);
       if (error?.response?.status === 401) {
@@ -137,8 +148,6 @@ export default function Escort() {
       let errorMessage = 'Failed to start escort';
       if (error.response?.data?.detail) {
         errorMessage = error.response.data.detail;
-      } else if (error.request) {
-        errorMessage = 'Network error. Please check your connection.';
       }
       Alert.alert('Error', errorMessage);
     } finally {
@@ -147,6 +156,8 @@ export default function Escort() {
   };
 
   const startLocationTracking = async (token: string) => {
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    
     intervalRef.current = setInterval(async () => {
       try {
         const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
@@ -159,48 +170,71 @@ export default function Escort() {
           headers: { Authorization: `Bearer ${token}` },
           timeout: 10000 
         });
-        console.log('Location tracked');
+        console.log('[Escort] Location tracked');
       } catch (error) {
-        console.error('Location tracking error:', error);
+        console.error('[Escort] Location tracking error:', error);
       }
     }, 30000);
   };
 
   const stopEscort = async () => {
-    Alert.alert('Arrived Safely?', 'Stopping will delete all tracking data.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Yes, I Arrived', onPress: async () => {
-        setLoading(true);
-        try {
-          if (intervalRef.current) clearInterval(intervalRef.current);
-          const token = await getToken();
-          await axios.post(`${BACKEND_URL}/api/escort/action`, {
-            action: 'stop',
-            location: { latitude: 0, longitude: 0, timestamp: new Date().toISOString() }
-          }, { 
-            headers: { Authorization: `Bearer ${token}` },
-            timeout: 15000 
-          });
+    Alert.alert(
+      'Arrived Safely?', 
+      'Stopping will delete all tracking data.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Yes, I Arrived', style: 'default', onPress: async () => {
+          setLoading(true);
+          try {
+            if (intervalRef.current) clearInterval(intervalRef.current);
+            
+            const token = await getAuthToken();
+            if (token) {
+              await axios.post(`${BACKEND_URL}/api/escort/action`, {
+                action: 'stop',
+                location: { latitude: 0, longitude: 0, timestamp: new Date().toISOString() }
+              }, { 
+                headers: { Authorization: `Bearer ${token}` },
+                timeout: 15000 
+              });
+            }
 
-          setIsTracking(false);
-          setSessionId(null);
-          Alert.alert('Success', 'Arrived safely! Data deleted.', [{ text: 'OK', onPress: () => router.back() }]);
-        } catch (error) {
-          Alert.alert('Error', 'Failed to stop escort');
-        } finally {
-          setLoading(false);
-        }
-      }}
-    ]);
+            // Clear local storage
+            await AsyncStorage.removeItem('active_escort');
+
+            setIsTracking(false);
+            setSessionId(null);
+            setStartTime(null);
+            
+            Alert.alert('Success', 'You arrived safely! Tracking data will be deleted.', [
+              { text: 'OK', onPress: () => router.back() }
+            ]);
+          } catch (error) {
+            Alert.alert('Error', 'Failed to stop escort');
+          } finally {
+            setLoading(false);
+          }
+        }}
+      ]
+    );
   };
 
-  // Show loading while checking premium
+  const formatElapsedTime = () => {
+    if (!startTime) return '0:00';
+    const start = new Date(startTime).getTime();
+    const now = Date.now();
+    const seconds = Math.floor((now - start) / 1000);
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
   if (checkingPremium) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#3B82F6" />
-          <Text style={styles.loadingText}>Checking access...</Text>
+          <Text style={styles.loadingText}>Loading...</Text>
         </View>
       </SafeAreaView>
     );
@@ -209,68 +243,82 @@ export default function Escort() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Security Escort</Text>
-        <View style={styles.placeholder} />
+        <Text style={styles.title}>Security Escort</Text>
+        <View style={{ width: 24 }} />
       </View>
 
       <View style={styles.content}>
-        <View style={styles.iconContainer}>
-          <Ionicons name="navigate" size={100} color={isTracking ? '#10B981' : '#3B82F6'} />
-        </View>
-
-        <Text style={styles.title}>{isTracking ? 'Escort Active' : 'Start Security Escort'}</Text>
-        <Text style={styles.description}>
-          {isTracking
-            ? 'Your journey is being tracked. Click ARRIVED when you reach safely.'
-            : 'Track your journey. Data will be auto-deleted when you arrive.'}
-        </Text>
-
-        {isTracking && (
-          <View style={styles.statusBox}>
-            <View style={styles.statusItem}>
-              <Ionicons name="location" size={24} color="#10B981" />
-              <Text style={styles.statusText}>GPS Tracking Active</Text>
+        {isTracking ? (
+          <View style={styles.trackingActive}>
+            <View style={styles.pulseContainer}>
+              <View style={styles.pulseOuter} />
+              <View style={styles.pulseInner}>
+                <Ionicons name="shield-checkmark" size={60} color="#10B981" />
+              </View>
             </View>
-            <View style={styles.statusItem}>
-              <Ionicons name="time" size={24} color="#10B981" />
-              <Text style={styles.statusText}>Every 30 seconds</Text>
-            </View>
-            <View style={styles.statusItem}>
-              <Ionicons name="shield-checkmark" size={24} color="#10B981" />
-              <Text style={styles.statusText}>Data Protected</Text>
-            </View>
-          </View>
-        )}
+            <Text style={styles.trackingTitle}>Escort Active</Text>
+            <Text style={styles.trackingSubtitle}>Security can track your journey</Text>
+            <Text style={styles.elapsedTime}>Duration: {formatElapsedTime()}</Text>
 
-        <View style={styles.buttonContainer}>
-          {!isTracking ? (
-            <TouchableOpacity style={styles.startButton} onPress={startEscort} disabled={loading}>
-              {loading ? <ActivityIndicator color="#fff" /> : (
-                <>
-                  <Ionicons name="play" size={24} color="#fff" />
-                  <Text style={styles.buttonText}>Start Escort</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity style={styles.arrivedButton} onPress={stopEscort} disabled={loading}>
-              {loading ? <ActivityIndicator color="#fff" /> : (
+            <TouchableOpacity 
+              style={styles.arrivedButton}
+              onPress={stopEscort}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
                 <>
                   <Ionicons name="checkmark-circle" size={24} color="#fff" />
-                  <Text style={styles.buttonText}>ARRIVED</Text>
+                  <Text style={styles.arrivedButtonText}>I've Arrived Safely</Text>
                 </>
               )}
             </TouchableOpacity>
-          )}
-        </View>
+          </View>
+        ) : (
+          <View style={styles.startContainer}>
+            <View style={styles.iconContainer}>
+              <Ionicons name="walk" size={80} color="#3B82F6" />
+            </View>
+            <Text style={styles.mainTitle}>Security Escort</Text>
+            <Text style={styles.description}>
+              Enable tracking so nearby security personnel can monitor your journey and ensure your safety.
+            </Text>
 
-        <View style={styles.infoBox}>
-          <Ionicons name="information-circle" size={20} color="#64748B" />
-          <Text style={styles.infoText}>Premium Feature: Continuous GPS tracking until you arrive safely.</Text>
-        </View>
+            <View style={styles.features}>
+              <View style={styles.featureItem}>
+                <Ionicons name="location" size={20} color="#10B981" />
+                <Text style={styles.featureText}>Real-time location tracking</Text>
+              </View>
+              <View style={styles.featureItem}>
+                <Ionicons name="shield" size={20} color="#10B981" />
+                <Text style={styles.featureText}>Security agents can view your route</Text>
+              </View>
+              <View style={styles.featureItem}>
+                <Ionicons name="trash" size={20} color="#10B981" />
+                <Text style={styles.featureText}>Data deleted when you arrive</Text>
+              </View>
+            </View>
+
+            <TouchableOpacity 
+              style={styles.startButton}
+              onPress={startEscort}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="play" size={24} color="#fff" />
+                  <Text style={styles.startButtonText}>Start Escort</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -278,23 +326,27 @@ export default function Escort() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0F172A' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16 },
-  backButton: { padding: 4 },
-  headerTitle: { fontSize: 20, fontWeight: '600', color: '#fff' },
-  placeholder: { width: 32 },
-  content: { flex: 1, padding: 24, justifyContent: 'space-between' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20 },
+  title: { fontSize: 20, fontWeight: 'bold', color: '#fff' },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  loadingText: { fontSize: 16, color: '#94A3B8', marginTop: 16 },
-  iconContainer: { alignItems: 'center', marginTop: 40 },
-  title: { fontSize: 28, fontWeight: 'bold', color: '#fff', textAlign: 'center', marginTop: 24 },
-  description: { fontSize: 16, color: '#94A3B8', textAlign: 'center', lineHeight: 24, marginTop: 16 },
-  statusBox: { backgroundColor: '#1E293B', borderRadius: 16, padding: 24, gap: 20, marginTop: 32 },
-  statusItem: { flexDirection: 'row', alignItems: 'center', gap: 16 },
-  statusText: { fontSize: 16, color: '#fff' },
-  buttonContainer: { marginTop: 32 },
-  startButton: { flexDirection: 'row', backgroundColor: '#3B82F6', borderRadius: 12, paddingVertical: 18, alignItems: 'center', justifyContent: 'center', gap: 12 },
-  arrivedButton: { flexDirection: 'row', backgroundColor: '#10B981', borderRadius: 12, paddingVertical: 18, alignItems: 'center', justifyContent: 'center', gap: 12 },
-  buttonText: { fontSize: 18, fontWeight: '600', color: '#fff' },
-  infoBox: { flexDirection: 'row', backgroundColor: '#1E293B', borderRadius: 12, padding: 16, gap: 12, marginTop: 24 },
-  infoText: { flex: 1, fontSize: 14, color: '#64748B', lineHeight: 20 },
+  loadingText: { color: '#94A3B8', marginTop: 12 },
+  content: { flex: 1, padding: 20 },
+  startContainer: { flex: 1, alignItems: 'center', paddingTop: 40 },
+  iconContainer: { width: 140, height: 140, borderRadius: 70, backgroundColor: '#1E293B', justifyContent: 'center', alignItems: 'center', marginBottom: 24 },
+  mainTitle: { fontSize: 28, fontWeight: 'bold', color: '#fff', marginBottom: 12 },
+  description: { fontSize: 16, color: '#94A3B8', textAlign: 'center', lineHeight: 24, marginBottom: 32 },
+  features: { width: '100%', backgroundColor: '#1E293B', borderRadius: 16, padding: 20, marginBottom: 32 },
+  featureItem: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
+  featureText: { fontSize: 14, color: '#fff' },
+  startButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: '#3B82F6', paddingVertical: 16, paddingHorizontal: 32, borderRadius: 12, width: '100%' },
+  startButtonText: { fontSize: 18, fontWeight: '600', color: '#fff' },
+  trackingActive: { flex: 1, alignItems: 'center', paddingTop: 40 },
+  pulseContainer: { position: 'relative', width: 140, height: 140, marginBottom: 24, justifyContent: 'center', alignItems: 'center' },
+  pulseOuter: { position: 'absolute', width: 140, height: 140, borderRadius: 70, backgroundColor: '#10B98130' },
+  pulseInner: { width: 100, height: 100, borderRadius: 50, backgroundColor: '#10B98120', justifyContent: 'center', alignItems: 'center' },
+  trackingTitle: { fontSize: 28, fontWeight: 'bold', color: '#10B981', marginBottom: 8 },
+  trackingSubtitle: { fontSize: 16, color: '#94A3B8', marginBottom: 16 },
+  elapsedTime: { fontSize: 20, color: '#fff', fontWeight: '600', marginBottom: 40 },
+  arrivedButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: '#10B981', paddingVertical: 16, paddingHorizontal: 32, borderRadius: 12, width: '100%' },
+  arrivedButtonText: { fontSize: 18, fontWeight: '600', color: '#fff' },
 });
