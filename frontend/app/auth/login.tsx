@@ -58,12 +58,17 @@ export default function Login() {
         console.warn('[Login] Push setup failed:', pushError);
       }
 
-      console.log('[Login] Navigating to:', response.data.role === 'security' ? '/security/home' : '/civil/home');
+      console.log('[Login] Navigating based on role:', response.data.role);
 
-      // Navigate based on role
-      if (response.data.role === 'security') {
+      // Navigate based on role - IMPORTANT: Check admin first
+      if (response.data.role === 'admin') {
+        console.log('[Login] Admin user, redirecting to admin dashboard');
+        router.replace('/admin/dashboard');
+      } else if (response.data.role === 'security') {
+        console.log('[Login] Security user, redirecting to security home');
         router.replace('/security/home');
       } else {
+        console.log('[Login] Civil user, redirecting to civil home');
         router.replace('/civil/home');
       }
 
